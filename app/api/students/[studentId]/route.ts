@@ -45,6 +45,25 @@ export async function GET(
               }
             }
           }
+        },
+        studentAssessments: {
+          include: {
+            assessment: {
+              select: {
+                id: true,
+                title: true,
+                lesson: {
+                  select: {
+                    id: true,
+                    title: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
+          }
         }
       }
     });

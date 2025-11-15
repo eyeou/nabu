@@ -5,13 +5,16 @@ import {
   analyzeAndGradeExamImage,
   generateStudentAnalysisFromLLM,
   StudentAnalysisOutput,
-  StudentForAnalysis
+  StudentForAnalysis,
+  ExamQuestionAnalysis
 } from '@/lib/ai';
 
 export async function POST(request: NextRequest) {
   try {
+    console.info('📥 Received exam upload request');
     const teacher = await getTeacherFromRequest(request);
     if (!teacher) {
+      console.warn('🚫 Exam upload blocked: unauthenticated request');
       return new Response(
         JSON.stringify({
           success: false,
@@ -39,6 +42,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!lessonId) {
+      console.warn('⚠️ Exam upload missing lessonId');
       return new Response(
         JSON.stringify({
           success: false,
@@ -51,6 +55,7 @@ export async function POST(request: NextRequest) {
     const imageSource = imageUrl || imageDataUrl;
 
     if (!imageSource) {
+      console.warn('⚠️ Exam upload missing image payload');
       return new Response(
         JSON.stringify({
           success: false,
@@ -77,6 +82,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!lesson) {
+      console.warn('🚫 Lesson not found or unauthorized during exam upload');
       return new Response(
         JSON.stringify({
           success: false,
@@ -86,24 +92,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.info('🧠 Sending exam image to AI for OCR + grading...');
     const examAnalysis = await analyzeAndGradeExamImage({
       imageUrl: imageSource,
       lessonTitle: lesson.title,
       providedStudentName
     });
+    console.info('✅ AI grading completed');
 
     let student;
     try {
+      console.info('👤 Resolving student record...');
       student = await resolveStudent({
         teacherId: teacher.teacherId,
         studentId,
         possibleName: providedStudentName || examAnalysis.detectedStudentName,
         classId
       });
+      console.info(`👤 Student resolved: ${student.name} (${student.id})`);
     } catch (studentError) {
       const errorMessage = mapStudentResolutionError(
         studentError instanceof Error ? studentError.message : undefined
       );
+      console.warn('🚫 Unable to resolve student for exam upload:', errorMessage);
       return new Response(
         JSON.stringify({
           success: false,
@@ -113,6 +124,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.info('🗂️ Saving assessment + graded responses...');
     const assessment = await prisma.assessment.create({
       data: {
         lessonId: lesson.id,
@@ -137,13 +149,16 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    console.info('📊 Updating lesson status with exam score...');
     await upsertStudentLessonStatus({
       studentId: student.id,
       lessonId: lesson.id,
       examAnalysis
     });
 
+    console.info('🧾 Regenerating AI summary for student...');
     const summaries = await regenerateStudentSummaries(student.id);
+    console.info('✨ Exam upload pipeline completed successfully');
 
     return new Response(
       JSON.stringify({
@@ -158,7 +173,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Exam upload error:', error);
+    console.error('💥 Exam upload error:', error);
     return new Response(
       JSON.stringify({
         success: false,
@@ -335,6 +350,22 @@ async function regenerateStudentSummaries(studentId: string) {
             }
           }
         }
+      },
+      studentAssessments: {
+        include: {
+          assessment: {
+            select: {
+              title: true,
+              lesson: {
+                select: { title: true }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 5
       }
     }
   });
@@ -359,6 +390,25 @@ async function regenerateStudentSummaries(studentId: string) {
         score: ls.score ?? undefined,
         notes: ls.notes ?? null,
         updatedAt: ls.updatedAt?.toISOString()
+      })) ?? [],
+    assessments:
+      student.studentAssessments?.map(sa => ({
+        examTitle: sa.assessment?.title || 'Assessment',
+        lessonTitle: sa.assessment?.lesson?.title,
+        overallScore: sa.overallScore ?? undefined,
+        maxScore: sa.maxScore ?? undefined,
+        questions: Array.isArray(sa.gradedResponses)
+          ? (sa.gradedResponses as ExamQuestionAnalysis[]).map((question, index) => ({
+              questionText: question.questionText || `Question ${index + 1}`,
+              studentAnswer: question.studentAnswer,
+              correctAnswer: question.correctAnswer,
+              pointsAwarded:
+                typeof question.pointsAwarded === 'number' ? question.pointsAwarded : undefined,
+              pointsPossible:
+                typeof question.pointsPossible === 'number' ? question.pointsPossible : undefined,
+              feedback: question.feedback
+            }))
+          : []
       })) ?? []
   };
 

@@ -23,12 +23,31 @@ interface LessonStatusForPrompt {
   updatedAt?: string;
 }
 
+interface AssessmentSummaryForPrompt {
+  examTitle: string;
+  lessonTitle?: string;
+  overallScore?: number;
+  maxScore?: number;
+  questions: Array<{
+    questionText: string;
+    studentAnswer?: string;
+    correctAnswer?: string;
+    pointsAwarded?: number;
+    pointsPossible?: number;
+    feedback?: string;
+  }>;
+}
+
 export interface StudentForAnalysis
-  extends Omit<Student, 'createdAt' | 'updatedAt' | 'lessonStatuses' | 'class'> {
+  extends Omit<
+    Student,
+    'createdAt' | 'updatedAt' | 'lessonStatuses' | 'class' | 'studentAssessments'
+  > {
   createdAt: string;
   updatedAt: string;
   className?: string;
   lessonStatuses: LessonStatusForPrompt[];
+  assessments?: AssessmentSummaryForPrompt[];
 }
 
 export interface ExamQuestionAnalysis {
@@ -136,7 +155,8 @@ function buildPromptInput(student: StudentForAnalysis) {
       updatedAt: student.updatedAt,
       overallAverageScore
     },
-    lessons: student.lessonStatuses
+    lessons: student.lessonStatuses,
+    assessments: student.assessments ?? []
   };
 }
 
@@ -151,7 +171,7 @@ export async function generateStudentAnalysisFromLLM(
       {
         role: 'system',
         content:
-          'You are an educational AI that analyzes a student based on structured performance data. ' +
+          'You are an educational AI that analyzes a student based on structured performance data, including lesson statuses and detailed exam question breakdowns. ' +
           'You MUST respond with a single JSON object and nothing else. ' +
           'The JSON must have exactly these keys: "strengths", "weaknesses", "recommendations". ' +
           '"strengths", "weaknesses" and "recommendations" must each be arrays of short bullet-point strings.'

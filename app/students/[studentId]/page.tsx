@@ -8,7 +8,31 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import AISummaryBox from '@/components/AISummaryBox';
 import ProgramGraph from '@/components/ProgramGraph';
-import { Student, StudentLessonStatus, StudentSummary, Lesson, LessonLink } from '@/types';
+import {
+  Student,
+  StudentLessonStatus,
+  StudentSummary,
+  Lesson,
+  LessonLink,
+  StudentAssessment
+} from '@/types';
+
+type StoredQuestion = {
+  number?: number;
+  questionText?: string;
+  studentAnswer?: string;
+  correctAnswer?: string;
+  pointsAwarded?: number;
+  pointsPossible?: number;
+  feedback?: string;
+};
+
+const getQuestionPreview = (responses: unknown): StoredQuestion[] => {
+  if (!Array.isArray(responses)) {
+    return [];
+  }
+  return (responses as StoredQuestion[]).slice(0, 3);
+};
 
 export default function StudentProfilePage() {
   const params = useParams();
@@ -19,6 +43,7 @@ export default function StudentProfilePage() {
   const [lessonStatuses, setLessonStatuses] = useState<StudentLessonStatus[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [links, setLinks] = useState<LessonLink[]>([]);
+  const [studentAssessments, setStudentAssessments] = useState<StudentAssessment[]>([]);
   const [loading, setLoading] = useState(true);
   const fetchStudent = useCallback(async () => {
     try {
@@ -33,6 +58,7 @@ export default function StudentProfilePage() {
         // Extract lessons from lesson statuses
         const uniqueLessons = data.data.lessonStatuses?.map((status: StudentLessonStatus) => status.lesson).filter(Boolean) || [];
         setLessons(uniqueLessons);
+        setStudentAssessments(data.data.studentAssessments || []);
         
         // For now, we'll use empty links - in a real app, you'd fetch these
         setLinks([]);
@@ -252,6 +278,70 @@ export default function StudentProfilePage() {
         <div className="space-y-6">
           {/* AI Summary Box */}
           <AISummaryBox summaries={summaries} loading={false} />
+
+          {/* Recent Exams */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Recent Exams</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {studentAssessments.length === 0 ? (
+                <p className="text-sm text-gray-500">No exams uploaded yet.</p>
+              ) : (
+                studentAssessments.slice(0, 3).map(assessment => (
+                  <div key={assessment.id} className="border rounded-lg p-3 bg-gray-50 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-gray-800">
+                        {assessment.assessment?.title || 'Assessment'}
+                      </p>
+                      <span className="text-xs text-gray-500">
+                        {assessment.createdAt
+                          ? new Date(assessment.createdAt).toLocaleDateString()
+                          : ''}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Score:{' '}
+                      {typeof assessment.overallScore === 'number' &&
+                      typeof assessment.maxScore === 'number'
+                        ? `${assessment.overallScore}/${assessment.maxScore}`
+                        : 'Pending'}
+                    </p>
+                    {Array.isArray(assessment.gradedResponses) && (
+                      <details className="text-sm text-gray-600">
+                        <summary className="cursor-pointer text-blue-600">
+                          View AI corrections
+                        </summary>
+                        <ul className="mt-2 space-y-2 text-gray-600">
+                          {getQuestionPreview(assessment.gradedResponses).map((question, idx) => (
+                              <li key={idx} className="border rounded-md p-2 bg-white">
+                                <p className="font-medium">
+                                  Q{question.number || idx + 1}: {question.questionText}
+                                </p>
+                                <p>Student: {question.studentAnswer || '—'}</p>
+                                <p>Answer: {question.correctAnswer || '—'}</p>
+                                <p>
+                                  Score:{' '}
+                                  {typeof question.pointsAwarded === 'number' &&
+                                  typeof question.pointsPossible === 'number'
+                                    ? `${question.pointsAwarded}/${question.pointsPossible}`
+                                    : 'N/A'}
+                                </p>
+                                {question.feedback && (
+                                  <p className="text-xs text-gray-500">
+                                    Feedback: {question.feedback}
+                                  </p>
+                                )}
+                              </li>
+                            ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
 
           {/* Quick Stats */}
           <Card>

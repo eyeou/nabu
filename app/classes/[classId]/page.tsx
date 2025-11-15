@@ -1,8 +1,20 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Class, Student } from '@/types';
+type StoredQuestion = {
+  number?: number;
+  questionText?: string;
+  studentAnswer?: string;
+  correctAnswer?: string;
+  pointsAwarded?: number;
+  pointsPossible?: number;
+  feedback?: string;
+};
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import Link from 'next/link';
 
 export default function ClassPage() {
   const params = useParams();
@@ -12,13 +24,11 @@ export default function ClassPage() {
   const [classData, setClassData] = useState<Class | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedStudentDetails, setSelectedStudentDetails] = useState<Student | null>(null);
   const [loading, setLoading] = useState(true);
+  const [studentDetailLoading, setStudentDetailLoading] = useState(false);
 
-  useEffect(() => {
-    fetchClass();
-  }, [classId]);
-
-  const fetchClass = async () => {
+  const fetchClass = useCallback(async () => {
     try {
       const response = await fetch(`/api/classes/${classId}`);
       const data = await response.json();
@@ -32,7 +42,26 @@ export default function ClassPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [classId]);
+
+  useEffect(() => {
+    fetchClass();
+  }, [fetchClass]);
+
+  const fetchStudentDetails = useCallback(async (studentId: string) => {
+    setStudentDetailLoading(true);
+    try {
+      const response = await fetch(`/api/students/${studentId}`);
+      const data = await response.json();
+      if (data.success) {
+        setSelectedStudentDetails(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch student details:', error);
+    } finally {
+      setStudentDetailLoading(false);
+    }
+  }, []);
 
   const handleAddStudent = async () => {
     const studentName = prompt('Student name:');
@@ -60,6 +89,7 @@ export default function ClassPage() {
 
   const handleStudentClick = (student: Student) => {
     setSelectedStudent(student);
+    fetchStudentDetails(student.id);
   };
 
   if (loading) {
@@ -137,36 +167,134 @@ export default function ClassPage() {
 
       {/* Student Detail Modal */}
       {selectedStudent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-8 z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">{selectedStudent.name}</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 sm:p-8 z-50">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto space-y-6">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs uppercase text-gray-400">Student</p>
+                <h2 className="text-2xl font-bold text-gray-800">{selectedStudent.name}</h2>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <Badge variant="secondary">
+                    Age {selectedStudent.age ?? '—'}
+                  </Badge>
+                  {selectedStudentDetails?.class?.name && (
+                    <Badge variant="outline">{selectedStudentDetails.class.name}</Badge>
+                  )}
+                </div>
+              </div>
               <button
-                onClick={() => setSelectedStudent(null)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
+                onClick={() => {
+                  setSelectedStudent(null);
+                  setSelectedStudentDetails(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
               >
                 ×
               </button>
             </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Age
-                </label>
-                <p className="text-gray-600">
-                  {selectedStudent.age || 'Not specified'}
-                </p>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Progress
-                </label>
-                <div className="text-gray-600">
-                  No progress data yet
-                </div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between">
+              <div className="text-sm text-gray-500">
+                {studentDetailLoading
+                  ? 'Loading learning data...'
+                  : 'Latest AI insights for this student.'}
               </div>
+              <Link
+                href={`/students/${selectedStudent.id}`}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              >
+                Open full student page →
+              </Link>
+            </div>
+
+            <div className="grid gap-4">
+              <Card>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-gray-800">AI summary</p>
+                    {studentDetailLoading && (
+                      <span className="text-xs text-gray-400">Loading...</span>
+                    )}
+                  </div>
+                  {selectedStudentDetails?.summaries?.length ? (
+                    selectedStudentDetails.summaries.map(summary => (
+                      <div key={summary.id}>
+                        <p className="text-xs uppercase text-gray-400 mb-1">{summary.subject}</p>
+                        <ul className="space-y-1 text-sm text-gray-700">
+                          {JSON.parse(summary.bulletPointsJson || '[]').map(
+                            (point: string, index: number) => (
+                              <li key={index} className="flex gap-2">
+                                <span>•</span>
+                                <span>{point}</span>
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      Upload a test copy to generate an AI summary.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-gray-800">Recent exams</p>
+                    {studentDetailLoading && (
+                      <span className="text-xs text-gray-400">Loading...</span>
+                    )}
+                  </div>
+                  {selectedStudentDetails?.studentAssessments?.length ? (
+                    selectedStudentDetails.studentAssessments.slice(0, 2).map(assessment => (
+                      <div key={assessment.id} className="border rounded-lg p-3 bg-gray-50 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-gray-800">
+                            {assessment.assessment?.title || 'Assessment'}
+                          </p>
+                          <span className="text-xs text-gray-400">
+                            {assessment.createdAt
+                              ? new Date(assessment.createdAt).toLocaleDateString()
+                              : ''}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Score:{' '}
+                          {typeof assessment.overallScore === 'number' &&
+                          typeof assessment.maxScore === 'number'
+                            ? `${assessment.overallScore}/${assessment.maxScore}`
+                            : 'Pending'}
+                        </p>
+                        {Array.isArray(assessment.gradedResponses) && (
+                          <details className="text-sm text-gray-600">
+                            <summary className="cursor-pointer text-blue-600">
+                              View AI corrections
+                            </summary>
+                            <ul className="mt-2 space-y-2 text-gray-600">
+                              {(assessment.gradedResponses as StoredQuestion[])
+                                .slice(0, 2)
+                                .map((question, idx) => (
+                                  <li key={idx} className="border rounded-md p-2 bg-white">
+                                    <p className="font-medium">
+                                      Q{question.number || idx + 1}: {question.questionText}
+                                    </p>
+                                    <p>Student: {question.studentAnswer || '—'}</p>
+                                    <p>Answer: {question.correctAnswer || '—'}</p>
+                                  </li>
+                                ))}
+                            </ul>
+                          </details>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No exam uploads yet.</p>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </div>
         </div>
