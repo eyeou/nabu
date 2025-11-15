@@ -24,8 +24,8 @@ export default function ProgramPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [studentNameInput, setStudentNameInput] = useState('');
 
-  const [examFile, setExamFile] = useState<File | null>(null);
-  const [examPreviewUrl, setExamPreviewUrl] = useState<string | null>(null);
+  const [examFiles, setExamFiles] = useState<File[]>([]);
+  const [examPreviewUrls, setExamPreviewUrls] = useState<string[]>([]);
   const [uploadingExam, setUploadingExam] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [generatedSummaries, setGeneratedSummaries] = useState<StudentSummary[]>([]);
@@ -123,17 +123,13 @@ export default function ProgramPage() {
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    setExamFile(file || null);
+    const files = Array.from(event.target.files || []);
+    setExamFiles(files);
     setUploadMessage(null);
     setGeneratedSummaries([]);
 
-    if (file) {
-      const objectUrl = URL.createObjectURL(file);
-      setExamPreviewUrl(objectUrl);
-    } else {
-      setExamPreviewUrl(null);
-    }
+    const previews = files.map(file => URL.createObjectURL(file));
+    setExamPreviewUrls(previews);
   };
 
   const fileToDataUrl = (file: File): Promise<string> => {
@@ -157,8 +153,8 @@ export default function ProgramPage() {
       return;
     }
 
-    if (!examFile) {
-      setUploadMessage({ type: 'error', text: 'Please choose a photo of the exam.' });
+    if (examFiles.length === 0) {
+      setUploadMessage({ type: 'error', text: 'Please choose at least one photo of the exam.' });
       return;
     }
 
@@ -182,7 +178,7 @@ export default function ProgramPage() {
     setUploadMessage(null);
 
     try {
-      const imageDataUrl = await fileToDataUrl(examFile);
+      const imageDataUrls = await Promise.all(examFiles.map(fileToDataUrl));
       const response = await fetch('/api/exams/upload', {
         method: 'POST',
         headers: {
@@ -190,7 +186,7 @@ export default function ProgramPage() {
         },
         body: JSON.stringify({
           lessonId: selectedLesson.id,
-          imageDataUrl,
+          imageDataUrls,
           classId: selectedClassId || undefined,
           studentId: selectedStudentId || undefined,
           providedStudentName: studentNameInput?.trim() || undefined
@@ -202,8 +198,8 @@ export default function ProgramPage() {
       if (data.success) {
         setUploadMessage({ type: 'success', text: data.message || 'Exam processed successfully!' });
         setGeneratedSummaries(data.data?.summaries || []);
-        setExamFile(null);
-        setExamPreviewUrl(null);
+        setExamFiles([]);
+        setExamPreviewUrls([]);
       } else {
         setUploadMessage({ type: 'error', text: data.message || 'Failed to process exam.' });
       }
@@ -381,18 +377,31 @@ export default function ProgramPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Exam photo</label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center gap-3 text-center">
-                      <input type="file" accept="image/*" onChange={handleFileChange} className="text-sm" />
-                      {examPreviewUrl && (
-                        <img
-                          src={examPreviewUrl}
-                          alt="Exam preview"
-                          className="max-h-48 rounded-lg border object-contain"
-                        />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Exam photos (multi-page supported)
+                    </label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center gap-3 text-center w-full">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleFileChange}
+                        className="text-sm"
+                      />
+                      {examPreviewUrls.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 w-full">
+                          {examPreviewUrls.map((url, index) => (
+                            <img
+                              key={url}
+                              src={url}
+                              alt={`Exam preview ${index + 1}`}
+                              className="max-h-32 rounded-lg border object-contain w-full"
+                            />
+                          ))}
+                        </div>
                       )}
                       <p className="text-xs text-gray-400">
-                        JPG / PNG / HEIC. Make sure handwriting is readable.
+                        JPG / PNG / HEIC. Ajoutez toutes les pages de la copie pour une analyse complète.
                       </p>
                     </div>
                   </div>

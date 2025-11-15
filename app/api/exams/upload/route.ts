@@ -6,6 +6,7 @@ import {
   generateStudentAnalysisFromLLM,
   StudentAnalysisOutput,
   StudentForAnalysis,
+  ExamAnalysisResult,
   ExamQuestionAnalysis
 } from '@/lib/ai';
 
@@ -29,6 +30,8 @@ export async function POST(request: NextRequest) {
       lessonId,
       imageUrl,
       imageDataUrl,
+      imageUrls,
+      imageDataUrls,
       studentId,
       classId,
       providedStudentName
@@ -36,6 +39,8 @@ export async function POST(request: NextRequest) {
       lessonId?: string;
       imageUrl?: string;
       imageDataUrl?: string;
+      imageUrls?: string[];
+      imageDataUrls?: string[];
       studentId?: string;
       classId?: string;
       providedStudentName?: string;
@@ -52,9 +57,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const imageSource = imageUrl || imageDataUrl;
+    const imageSources = [
+      ...(imageUrl ? [imageUrl] : []),
+      ...(Array.isArray(imageUrls) ? imageUrls : []),
+      ...(imageDataUrl ? [imageDataUrl] : []),
+      ...(Array.isArray(imageDataUrls) ? imageDataUrls : [])
+    ].filter(Boolean);
 
-    if (!imageSource) {
+    if (imageSources.length === 0) {
       console.warn('⚠️ Exam upload missing image payload');
       return new Response(
         JSON.stringify({
@@ -92,12 +102,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.info('🧠 Sending exam image to AI for OCR + grading...');
-    const examAnalysis = await analyzeAndGradeExamImage({
-      imageUrl: imageSource,
-      lessonTitle: lesson.title,
-      providedStudentName
-    });
+    const examAnalyses: ExamAnalysisResult[] = [];
+    for (const [index, source] of imageSources.entries()) {
+      console.info(`🧠 Sending exam image page ${index + 1}/${imageSources.length} to AI...`);
+      const result = await analyzeAndGradeExamImage({
+        imageUrl: source,
+        lessonTitle: lesson.title,
+        providedStudentName
+      });
+      examAnalyses.push(result);
+    }
+    const examAnalysis = mergeExamAnalyses(examAnalyses);
     console.info('✅ AI grading completed');
 
     let student;
@@ -130,7 +145,7 @@ export async function POST(request: NextRequest) {
         lessonId: lesson.id,
         title: examAnalysis.examTitle || `${lesson.title} Assessment`,
         description: examAnalysis.subject || null,
-        sourceImageUrl: imageSource,
+        sourceImageUrl: imageSources.join(','),
         extractedData: {
           rawText: examAnalysis.rawText,
           questions: examAnalysis.questions
@@ -443,5 +458,29 @@ async function upsertSummaries(studentId: string, analysis: StudentAnalysisOutpu
       })
     )
   );
+}
+
+function mergeExamAnalyses(analyses: ExamAnalysisResult[]): ExamAnalysisResult {
+  if (analyses.length === 0) {
+    throw new Error('No analyses to merge');
+  }
+
+  const mergedQuestions = analyses.flatMap(analysis => analysis.questions);
+  const totalAwarded = mergedQuestions
+    .map(q => q.pointsAwarded ?? 0)
+    .reduce((sum, value) => sum + value, 0);
+  const totalPossible = mergedQuestions
+    .map(q => q.pointsPossible ?? 0)
+    .reduce((sum, value) => sum + value, 0);
+
+  return {
+    examTitle: analyses[0].examTitle,
+    subject: analyses.find(a => a.subject)?.subject,
+    detectedStudentName: analyses.find(a => a.detectedStudentName)?.detectedStudentName,
+    rawText: analyses.map(a => a.rawText).filter(Boolean).join('\n---\n'),
+    overallScore: totalPossible > 0 ? totalAwarded : analyses[0].overallScore,
+    maxScore: totalPossible > 0 ? totalPossible : analyses[0].maxScore,
+    questions: mergedQuestions
+  };
 }
 

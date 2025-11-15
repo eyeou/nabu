@@ -145,6 +145,23 @@ function buildPromptInput(student: StudentForAnalysis) {
         )
       : null;
 
+  const recentAssessments =
+    student.assessments?.map(assessment => ({
+      examTitle: assessment.examTitle,
+      lessonTitle: assessment.lessonTitle,
+      overallScore: assessment.overallScore,
+      maxScore: assessment.maxScore,
+      questions: assessment.questions?.map(question => ({
+        number: question.number,
+        questionText: question.questionText,
+        studentAnswer: question.studentAnswer,
+        correctAnswer: question.correctAnswer,
+        pointsAwarded: question.pointsAwarded,
+        pointsPossible: question.pointsPossible,
+        feedback: question.feedback
+      }))
+    })) ?? [];
+
   return {
     student: {
       id: student.id,
@@ -155,8 +172,8 @@ function buildPromptInput(student: StudentForAnalysis) {
       updatedAt: student.updatedAt,
       overallAverageScore
     },
-    lessons: student.lessonStatuses,
-    assessments: student.assessments ?? []
+    lecons: student.lessonStatuses,
+    recentAssessments
   };
 }
 
@@ -171,16 +188,16 @@ export async function generateStudentAnalysisFromLLM(
       {
         role: 'system',
         content:
-          'You are an educational AI that analyzes a student based on structured performance data, including lesson statuses and detailed exam question breakdowns. ' +
-          'You MUST respond with a single JSON object and nothing else. ' +
-          'The JSON must have exactly these keys: "strengths", "weaknesses", "recommendations". ' +
-          '"strengths", "weaknesses" and "recommendations" must each be arrays of short bullet-point strings.'
+          'Tu es un coach pédagogique francophone. Tu analyses EXCLUSIVEMENT les copies corrigées des élèves (questions, réponses, corrections, feedback) pour déterminer leurs forces, faiblesses et recommandations actionnables. ' +
+          'Tu ignores tout signal qui ne vient pas d\'une évaluation. ' +
+          'Ta réponse DOIT être un seul objet JSON avec exactement les clés "strengths", "weaknesses", "recommendations". ' +
+          'Chaque clé contient un tableau de puces rédigées en français clair, directement liées aux erreurs ou réussites observées dans les copies. '
       },
       {
         role: 'user',
         content:
-          'Analyze the following student data and produce targeted, practical insights for a teacher. ' +
-          'Keep bullet points concise and focused on classroom actions.\n\n' +
+          'Analyse ces données (leçons + copies corrigées). Déduis uniquement des enseignements issus des copies : cite les compétences maîtrisées, les erreurs récurrentes, et propose des recommandations concrètes pour la prochaine séance. ' +
+          'Réponds en français, format JSON strict.\n\n' +
           JSON.stringify(input)
       }
     ]
