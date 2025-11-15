@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,94 +10,131 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum MasteryLevel {
-  NOT_STARTED
-  EMERGING
-  PROFICIENT
-  MASTERED
-}
-
 model Teacher {
-  id           String    @id @default(uuid())
+  id           String    @id @default(cuid())
   email        String    @unique
   passwordHash String
   name         String
   createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  // Relations
   programs     Program[]
   classes      Class[]
+  
+  @@map("teachers")
 }
 
 model Program {
-  id          String   @id @default(uuid())
+  id          String   @id @default(cuid())
   teacherId   String
   title       String
   description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
   teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   lessons     Lesson[]
+  
+  @@map("programs")
 }
 
 model Lesson {
-  id          String       @id @default(uuid())
+  id          String   @id @default(cuid())
   programId   String
   title       String
   description String?
-  orderIndex  Int          @default(0)
-  testData    String?
-  program     Program      @relation(fields: [programId], references: [id], onDelete: Cascade)
-  outgoing    LessonLink[] @relation("LessonOutgoing")
-  incoming    LessonLink[] @relation("LessonIncoming")
-  statuses    StudentLessonStatus[]
+  orderIndex  Int      @default(0)
+  testData    String?  // JSON string for test content
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  program           Program             @relation(fields: [programId], references: [id], onDelete: Cascade)
+  fromLinks         LessonLink[]        @relation("FromLesson")
+  toLinks           LessonLink[]        @relation("ToLesson")
+  studentStatuses   StudentLessonStatus[]
+  
+  @@map("lessons")
 }
 
 model LessonLink {
-  id           String  @id @default(uuid())
+  id           String @id @default(cuid())
   fromLessonId String
   toLessonId   String
-  relationType String
-  fromLesson   Lesson  @relation("LessonOutgoing", fields: [fromLessonId], references: [id], onDelete: Cascade)
-  toLesson     Lesson  @relation("LessonIncoming", fields: [toLessonId], references: [id], onDelete: Cascade)
-
-  @@index([fromLessonId])
-  @@index([toLessonId])
+  relationType String @default("prerequisite") // prerequisite, related, sequence
+  createdAt    DateTime @default(now())
+  
+  // Relations
+  fromLesson   Lesson @relation("FromLesson", fields: [fromLessonId], references: [id], onDelete: Cascade)
+  toLesson     Lesson @relation("ToLesson", fields: [toLessonId], references: [id], onDelete: Cascade)
+  
+  @@unique([fromLessonId, toLessonId])
+  @@map("lesson_links")
 }
 
 model Class {
-  id        String    @id @default(uuid())
+  id        String   @id @default(cuid())
   teacherId String
   name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
   teacher   Teacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   students  Student[]
+  
+  @@map("classes")
 }
 
 model Student {
-  id        String    @id @default(uuid())
+  id        String   @id @default(cuid())
   classId   String
   name      String
-  age       Int
+  age       Int?
   avatarUrl String?
-  class     Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
-  statuses  StudentLessonStatus[]
-  summaries StudentSummary[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  class           Class                 @relation(fields: [classId], references: [id], onDelete: Cascade)
+  lessonStatuses  StudentLessonStatus[]
+  summaries       StudentSummary[]
+  
+  @@map("students")
 }
 
 model StudentLessonStatus {
-  id           String       @id @default(uuid())
+  id           String @id @default(cuid())
   studentId    String
   lessonId     String
-  masteryLevel MasteryLevel @default(NOT_STARTED)
+  masteryLevel String @default("not_started") // not_started, in_progress, completed, mastered
   notes        String?
-  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  lesson       Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-
+  score        Float? // 0-100 score
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // Relations
+  student      Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lesson       Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
   @@unique([studentId, lessonId])
+  @@map("student_lesson_status")
 }
 
 model StudentSummary {
-  id              String   @id @default(uuid())
-  studentId       String
-  subject         String
-  bulletPointsJson Json
-  student         Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
+  id               String   @id @default(cuid())
+  studentId        String
+  subject          String   // "strengths", "weaknesses", "recommendations"
+  bulletPointsJson String   // JSON array of bullet points
+  generatedAt      DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  // Relations
+  student          Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
   @@unique([studentId, subject])
+  @@map("student_summaries")
 }
