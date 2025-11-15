@@ -77,7 +77,7 @@ export default function SignupPage() {
       } else {
         setError(data.message || 'Signup failed');
       }
-    } catch (error) {
+    } catch {
       setError('An unexpected error occurred');
     } finally {
       setIsLoading(false);

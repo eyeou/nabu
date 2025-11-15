@@ -78,11 +78,9 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
           <div className="text-center py-8">
             <div className="text-4xl mb-3">🤖</div>
             <p className="text-gray-500 mb-4">No AI analysis available yet</p>
-            <Button variant="outline" size="sm">
-              Generate Analysis
-            </Button>
             <p className="text-xs text-gray-400 mt-2">
-              AI will analyze student performance across all lessons
+              AI analysis will appear automatically after the student&apos;s test copy
+              is uploaded and processed.
             </p>
           </div>
         </CardContent>

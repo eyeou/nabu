@@ -67,6 +67,7 @@ export interface Student {
   class?: Class;
   lessonStatuses?: StudentLessonStatus[];
   summaries?: StudentSummary[];
+  studentAssessments?: StudentAssessment[];
 }
 
 export interface StudentLessonStatus {
@@ -90,6 +91,33 @@ export interface StudentSummary {
   bulletPointsJson: string;
   generatedAt: Date;
   updatedAt: Date;
+  student?: Student;
+}
+
+export interface Assessment {
+  id: string;
+  lessonId: string;
+  title: string;
+  description?: string;
+  sourceImageUrl?: string;
+  extractedData?: any;
+  createdAt: Date;
+  updatedAt: Date;
+  lesson?: Lesson;
+  studentAssessments?: StudentAssessment[];
+}
+
+export interface StudentAssessment {
+  id: string;
+  assessmentId: string;
+  studentId: string;
+  detectedStudentName?: string;
+  overallScore?: number;
+  maxScore?: number;
+  gradedResponses?: any;
+  createdAt: Date;
+  updatedAt: Date;
+  assessment?: Assessment;
   student?: Student;
 }
 

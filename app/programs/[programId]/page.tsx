@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, ChangeEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Program, Lesson } from '@/types';
+import { Program, Lesson, Class, StudentSummary } from '@/types';
+
+interface ClassWithStudents extends Class {
+  students?: { id: string; name: string; age?: number; avatarUrl?: string | null }[];
+}
 
 export default function ProgramPage() {
   const params = useParams();
@@ -14,11 +18,19 @@ export default function ProgramPage() {
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchProgram();
-  }, [programId]);
+  const [classes, setClasses] = useState<ClassWithStudents[]>([]);
+  const [classesLoading, setClassesLoading] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  const [studentNameInput, setStudentNameInput] = useState('');
 
-  const fetchProgram = async () => {
+  const [examFile, setExamFile] = useState<File | null>(null);
+  const [examPreviewUrl, setExamPreviewUrl] = useState<string | null>(null);
+  const [uploadingExam, setUploadingExam] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [generatedSummaries, setGeneratedSummaries] = useState<StudentSummary[]>([]);
+
+  const fetchProgram = useCallback(async () => {
     try {
       const response = await fetch(`/api/programs/${programId}`);
       const data = await response.json();
@@ -32,7 +44,31 @@ export default function ProgramPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [programId]);
+
+  const fetchClasses = useCallback(async () => {
+    setClassesLoading(true);
+    try {
+      const response = await fetch('/api/classes');
+      const data = await response.json();
+
+      if (data.success) {
+        setClasses(data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch classes:', error);
+    } finally {
+      setClassesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProgram();
+  }, [fetchProgram]);
+
+  useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
 
   const handleCreateLesson = async () => {
     const lessonTitle = prompt('Lesson name:');
@@ -61,6 +97,122 @@ export default function ProgramPage() {
 
   const handleLessonClick = (lesson: Lesson) => {
     setSelectedLesson(lesson);
+    setUploadMessage(null);
+    setGeneratedSummaries([]);
+  };
+
+  const studentsForSelectedClass = useMemo(() => {
+    if (!selectedClassId) return [];
+    return classes.find(cls => cls.id === selectedClassId)?.students || [];
+  }, [classes, selectedClassId]);
+
+  const handleClassChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setSelectedClassId(event.target.value);
+    setSelectedStudentId('');
+    setStudentNameInput('');
+  };
+
+  const handleStudentChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setSelectedStudentId(event.target.value);
+    if (event.target.value) {
+      const student = studentsForSelectedClass.find(s => s.id === event.target.value);
+      setStudentNameInput(student?.name || '');
+    } else {
+      setStudentNameInput('');
+    }
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    setExamFile(file || null);
+    setUploadMessage(null);
+    setGeneratedSummaries([]);
+
+    if (file) {
+      const objectUrl = URL.createObjectURL(file);
+      setExamPreviewUrl(objectUrl);
+    } else {
+      setExamPreviewUrl(null);
+    }
+  };
+
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to read file'));
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleExamUpload = async () => {
+    if (!selectedLesson) {
+      setUploadMessage({ type: 'error', text: 'Please select a lesson first.' });
+      return;
+    }
+
+    if (!examFile) {
+      setUploadMessage({ type: 'error', text: 'Please choose a photo of the exam.' });
+      return;
+    }
+
+    if (!selectedStudentId && !selectedClassId) {
+      setUploadMessage({
+        type: 'error',
+        text: 'Pick a class (and optionally an existing student) before uploading.'
+      });
+      return;
+    }
+
+    if (!selectedStudentId && !studentNameInput.trim()) {
+      setUploadMessage({
+        type: 'error',
+        text: 'Provide a student name so we can create or link the student.'
+      });
+      return;
+    }
+
+    setUploadingExam(true);
+    setUploadMessage(null);
+
+    try {
+      const imageDataUrl = await fileToDataUrl(examFile);
+      const response = await fetch('/api/exams/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          lessonId: selectedLesson.id,
+          imageDataUrl,
+          classId: selectedClassId || undefined,
+          studentId: selectedStudentId || undefined,
+          providedStudentName: studentNameInput?.trim() || undefined
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUploadMessage({ type: 'success', text: data.message || 'Exam processed successfully!' });
+        setGeneratedSummaries(data.data?.summaries || []);
+        setExamFile(null);
+        setExamPreviewUrl(null);
+      } else {
+        setUploadMessage({ type: 'error', text: data.message || 'Failed to process exam.' });
+      }
+    } catch (error) {
+      console.error('Upload exam photo failed:', error);
+      setUploadMessage({ type: 'error', text: 'Unexpected error while uploading exam.' });
+    } finally {
+      setUploadingExam(false);
+    }
   };
 
   if (loading) {
@@ -104,7 +256,7 @@ export default function ProgramPage() {
         </div>
       </div>
 
-      {/* Lessons as circles */}
+      {/* Lessons */}
       <div className="container mx-auto px-8 py-12">
         {lessons.length === 0 ? (
           <div className="text-center py-20">
@@ -118,7 +270,7 @@ export default function ProgramPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-8">
-            {lessons.map((lesson) => (
+            {lessons.map(lesson => (
               <button
                 key={lesson.id}
                 onClick={() => handleLessonClick(lesson)}
@@ -136,39 +288,167 @@ export default function ProgramPage() {
         )}
       </div>
 
-      {/* Lesson Detail Modal */}
+      {/* Lesson detail + upload modal */}
       {selectedLesson && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-8 z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 sm:p-8 z-50">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">{selectedLesson.title}</h2>
+              <div>
+                <p className="text-xs uppercase text-gray-400">Lesson</p>
+                <h2 className="text-2xl font-bold text-gray-800">{selectedLesson.title}</h2>
+              </div>
               <button
                 onClick={() => setSelectedLesson(null)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
               >
                 ×
               </button>
             </div>
-            
-            <div className="space-y-4">
+
+            <div className="space-y-8">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
                 <p className="text-gray-600">
-                  {selectedLesson.description || 'No description'}
+                  {selectedLesson.description?.trim() || 'No description yet.'}
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Files
-                </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <div className="text-gray-400 mb-2">Upload documents</div>
-                  <div className="text-sm text-gray-500">PDF, Word, etc.</div>
+              <div className="border rounded-xl p-5 space-y-4 bg-gray-50">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Upload student exam copy</h3>
+                  <p className="text-sm text-gray-500">
+                    Capture or upload the student&apos;s test page. The AI will read it, correct it, and
+                    refresh that student&apos;s profile automatically.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                      <select
+                        value={selectedClassId}
+                        onChange={handleClassChange}
+                        className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-400"
+                      >
+                        <option value="">
+                          {classesLoading ? 'Loading classes...' : 'Select a class'}
+                        </option>
+                        {classes.map(cls => (
+                          <option key={cls.id} value={cls.id}>
+                            {cls.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Student (optional)
+                      </label>
+                      <select
+                        value={selectedStudentId}
+                        onChange={handleStudentChange}
+                        disabled={!selectedClassId}
+                        className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-400 disabled:bg-gray-100"
+                      >
+                        <option value="">
+                          {selectedClassId ? 'Link an existing student' : 'Select class first'}
+                        </option>
+                        {studentsForSelectedClass.map(student => (
+                          <option key={student.id} value={student.id}>
+                            {student.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Student name (required if new)
+                    </label>
+                    <input
+                      type="text"
+                      value={studentNameInput}
+                      onChange={event => setStudentNameInput(event.target.value)}
+                      placeholder="Enter the student&apos;s full name"
+                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      If you didn&apos;t select an existing student, we&apos;ll create one inside that class.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Exam photo</label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center gap-3 text-center">
+                      <input type="file" accept="image/*" onChange={handleFileChange} className="text-sm" />
+                      {examPreviewUrl && (
+                        <img
+                          src={examPreviewUrl}
+                          alt="Exam preview"
+                          className="max-h-48 rounded-lg border object-contain"
+                        />
+                      )}
+                      <p className="text-xs text-gray-400">
+                        JPG / PNG / HEIC. Make sure handwriting is readable.
+                      </p>
+                    </div>
+                  </div>
+
+                  {uploadMessage && (
+                    <div
+                      className={`text-sm font-medium px-4 py-2 rounded-lg ${
+                        uploadMessage.type === 'success'
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-red-50 text-red-600'
+                      }`}
+                    >
+                      {uploadMessage.text}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleExamUpload}
+                      disabled={uploadingExam}
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:bg-gray-300"
+                    >
+                      {uploadingExam ? 'Analyzing...' : 'Upload & analyze'}
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {generatedSummaries.length > 0 && (
+                <div className="border rounded-xl p-5 space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800">AI summary refreshed</h3>
+                    <p className="text-sm text-gray-500">
+                      These bullet points were pushed to the student profile automatically.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    {generatedSummaries.map(summary => (
+                      <div key={summary.id} className="border rounded-lg p-4 bg-gray-50">
+                        <p className="text-xs uppercase text-gray-400 mb-2">{summary.subject}</p>
+                        <ul className="space-y-2 text-sm text-gray-700">
+                          {JSON.parse(summary.bulletPointsJson || '[]').map(
+                            (point: string, index: number) => (
+                              <li key={index} className="flex gap-2 items-start">
+                                <span className="text-blue-400 mt-0.5">•</span>
+                                <span>{point}</span>
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

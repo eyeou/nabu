@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -20,13 +20,7 @@ export default function StudentProfilePage() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [links, setLinks] = useState<LessonLink[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generatingSummary, setGeneratingSummary] = useState(false);
-
-  useEffect(() => {
-    fetchStudent();
-  }, [studentId]);
-
-  const fetchStudent = async () => {
+  const fetchStudent = useCallback(async () => {
     try {
       const response = await fetch(`/api/students/${studentId}`);
       const data = await response.json();
@@ -48,29 +42,11 @@ export default function StudentProfilePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [studentId]);
 
-  const handleGenerateSummary = async () => {
-    setGeneratingSummary(true);
-    try {
-      const response = await fetch('/api/summaries/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ studentId })
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setSummaries(data.data);
-      }
-    } catch (error) {
-      console.error('Failed to generate summary:', error);
-    } finally {
-      setGeneratingSummary(false);
-    }
-  };
+  useEffect(() => {
+    fetchStudent();
+  }, [fetchStudent]);
 
   const getOverallProgress = () => {
     if (lessonStatuses.length === 0) return 0;
@@ -165,11 +141,10 @@ export default function StudentProfilePage() {
         </div>
         
         <Button 
-          onClick={handleGenerateSummary} 
-          disabled={generatingSummary}
-          className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+          disabled
+          className="bg-gray-200 text-gray-500 cursor-not-allowed"
         >
-          {generatingSummary ? 'Generating...' : 'Generate AI Analysis'}
+          AI analysis is generated after test upload
         </Button>
       </div>
 
@@ -231,7 +206,7 @@ export default function StudentProfilePage() {
                   <div className="text-4xl mb-4">📚</div>
                   <h3 className="text-lg font-medium text-gray-700 mb-2">No Learning Path Assigned</h3>
                   <p className="text-gray-500">
-                    This student hasn't been assigned to any lessons yet.
+                    This student hasn&apos;t been assigned to any lessons yet.
                   </p>
                 </CardContent>
               </Card>
@@ -276,10 +251,7 @@ export default function StudentProfilePage() {
         {/* Sidebar */}
         <div className="space-y-6">
           {/* AI Summary Box */}
-          <AISummaryBox
-            summaries={summaries}
-            loading={generatingSummary}
-          />
+          <AISummaryBox summaries={summaries} loading={false} />
 
           {/* Quick Stats */}
           <Card>

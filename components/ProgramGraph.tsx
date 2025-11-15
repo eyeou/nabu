@@ -113,7 +113,7 @@ export default function ProgramGraph({
         <div className="mt-4 p-3 bg-blue-50 rounded-lg">
           <p className="text-sm text-blue-700">
             Click on any lesson node to edit its content, description, and test data.
-            Use the "Add Connection" button to link lessons and show learning prerequisites.
+            Use the &quot;Add Connection&quot; button to link lessons and show learning prerequisites.
           </p>
         </div>
       </CardContent>
