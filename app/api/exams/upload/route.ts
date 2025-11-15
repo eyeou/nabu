@@ -466,20 +466,16 @@ function mergeExamAnalyses(analyses: ExamAnalysisResult[]): ExamAnalysisResult {
   }
 
   const mergedQuestions = analyses.flatMap(analysis => analysis.questions);
-  const totalAwarded = mergedQuestions
-    .map(q => q.pointsAwarded ?? 0)
-    .reduce((sum, value) => sum + value, 0);
-  const totalPossible = mergedQuestions
-    .map(q => q.pointsPossible ?? 0)
-    .reduce((sum, value) => sum + value, 0);
+  const declaredOverallScore = analyses.find(a => typeof a.overallScore === 'number')?.overallScore;
+  const declaredMaxScore = analyses.find(a => typeof a.maxScore === 'number')?.maxScore;
 
   return {
     examTitle: analyses[0].examTitle,
     subject: analyses.find(a => a.subject)?.subject,
     detectedStudentName: analyses.find(a => a.detectedStudentName)?.detectedStudentName,
     rawText: analyses.map(a => a.rawText).filter(Boolean).join('\n---\n'),
-    overallScore: totalPossible > 0 ? totalAwarded : analyses[0].overallScore,
-    maxScore: totalPossible > 0 ? totalPossible : analyses[0].maxScore,
+    overallScore: declaredOverallScore ?? analyses[0].overallScore,
+    maxScore: declaredMaxScore ?? analyses[0].maxScore,
     questions: mergedQuestions
   };
 }
