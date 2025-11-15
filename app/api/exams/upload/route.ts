@@ -189,10 +189,14 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('💥 Exam upload error:', error);
+    const message =
+      error instanceof Error
+        ? `Failed to process exam upload: ${error.message}`
+        : 'Failed to process exam upload';
     return new Response(
       JSON.stringify({
         success: false,
-        message: 'Failed to process exam upload'
+        message
       }),
       { status: 500 }
     );
