@@ -1,36 +1,36 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import DashboardCard from '@/components/DashboardCard';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Program, Class } from '@/types';
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const view = searchParams.get('view') || 'programs';
+  
   const [programs, setPrograms] = useState<Program[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardData();
+    fetchData();
   }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchData = async () => {
     try {
-      // Fetch programs
-      const programsResponse = await fetch('/api/programs');
-      const programsData = await programsResponse.json();
+      const [programsRes, classesRes] = await Promise.all([
+        fetch('/api/programs'),
+        fetch('/api/classes')
+      ]);
       
-      // Fetch classes
-      const classesResponse = await fetch('/api/classes');
-      const classesData = await classesResponse.json();
+      const programsData = await programsRes.json();
+      const classesData = await classesRes.json();
 
       if (programsData.success) setPrograms(programsData.data || []);
       if (classesData.success) setClasses(classesData.data || []);
     } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+      console.error('Failed to fetch data:', error);
     } finally {
       setLoading(false);
     }
@@ -46,162 +46,162 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-6 py-8">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-6"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-48 bg-gray-200 rounded-lg"></div>
-            ))}
-          </div>
-        </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-400">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-6 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-2">
-          Manage your programs and classes from one central location
-        </p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Simple Toggle */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="container mx-auto px-8 py-4">
+          <div className="flex gap-4">
+            <button
+              onClick={() => router.push('/dashboard?view=programs')}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                view === 'programs'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Programs
+            </button>
+            <button
+              onClick={() => router.push('/dashboard?view=classes')}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                view === 'classes'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Classes
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <DashboardCard
-          title="Programs"
-          count={programs.length}
-          description="Learning programs created"
-          buttonText="Create Program"
-          onClick={handleCreateProgram}
-          color="blue"
-          icon={
-            <div className="text-lg">📚</div>
-          }
-        />
-        
-        <DashboardCard
-          title="Classes"
-          count={classes.length}
-          description="Active classes"
-          buttonText="Create Class"
-          onClick={handleCreateClass}
-          color="green"
-          icon={
-            <div className="text-lg">🏫</div>
-          }
-        />
-        
-        <DashboardCard
-          title="Students"
-          count={classes.reduce((total, cls) => total + (cls.students?.length || 0), 0)}
-          description="Total students enrolled"
-          buttonText="View All"
-          onClick={() => {}}
-          color="purple"
-          icon={
-            <div className="text-lg">👥</div>
-          }
-        />
-        
-        <DashboardCard
-          title="Lessons"
-          count={programs.reduce((total, program) => total + (program.lessons?.length || 0), 0)}
-          description="Total lessons created"
-          buttonText="Manage"
-          onClick={() => {}}
-          color="orange"
-          icon={
-            <div className="text-lg">📖</div>
-          }
-        />
-      </div>
+      <div className="container mx-auto px-8 py-12">
+        {view === 'programs' ? (
+          <div>
+            {/* Programs View */}
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-800">Programs</h1>
+              <button
+                onClick={handleCreateProgram}
+                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+              >
+                + New Program
+              </button>
+            </div>
 
-      {/* Recent Programs */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Recent Programs</CardTitle>
-            <Button variant="outline" size="sm" onClick={handleCreateProgram}>
-              Create New
-            </Button>
-          </CardHeader>
-          <CardContent>
             {programs.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-3">📚</div>
-                <p className="text-gray-500 mb-4">No programs created yet</p>
-                <Button onClick={handleCreateProgram}>
-                  Create Your First Program
-                </Button>
+              <div className="text-center py-20">
+                <div className="text-gray-400 mb-4">No programs yet</div>
+                <button
+                  onClick={handleCreateProgram}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Create First Program
+                </button>
               </div>
             ) : (
-              <div className="space-y-4">
-                {programs.slice(0, 5).map(program => (
-                  <div 
-                    key={program.id} 
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {programs.map((program) => (
+                  <button
+                    key={program.id}
                     onClick={() => router.push(`/programs/${program.id}`)}
+                    className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105 border-2 border-gray-100 hover:border-blue-300 text-left"
                   >
-                    <div>
-                      <h3 className="font-medium text-gray-900">{program.title}</h3>
-                      <p className="text-sm text-gray-500 truncate max-w-xs">
-                        {program.description || 'No description'}
+                    {/* Circles representing lessons */}
+                    <div className="flex flex-wrap gap-2 mb-6">
+                      {program.lessons && program.lessons.length > 0 ? (
+                        program.lessons.slice(0, 12).map((lesson) => (
+                          <div
+                            key={lesson.id}
+                            className="w-10 h-10 rounded-full bg-blue-400 hover:bg-blue-500 transition-colors"
+                            title={lesson.title}
+                          ></div>
+                        ))
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gray-200"></div>
+                      )}
+                    </div>
+                    
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">
+                      {program.title}
+                    </h3>
+                    
+                    {program.description && (
+                      <p className="text-sm text-gray-500 line-clamp-2">
+                        {program.description}
                       </p>
-                    </div>
-                    <div className="text-sm text-gray-400">
-                      {program.lessons?.length || 0} lessons
-                    </div>
-                  </div>
+                    )}
+                  </button>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        ) : (
+          <div>
+            {/* Classes View */}
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-800">Classes</h1>
+              <button
+                onClick={handleCreateClass}
+                className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+              >
+                + New Class
+              </button>
+            </div>
 
-        {/* Recent Classes */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Recent Classes</CardTitle>
-            <Button variant="outline" size="sm" onClick={handleCreateClass}>
-              Create New
-            </Button>
-          </CardHeader>
-          <CardContent>
             {classes.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-3">🏫</div>
-                <p className="text-gray-500 mb-4">No classes created yet</p>
-                <Button onClick={handleCreateClass}>
-                  Create Your First Class
-                </Button>
+              <div className="text-center py-20">
+                <div className="text-gray-400 mb-4">No classes yet</div>
+                <button
+                  onClick={handleCreateClass}
+                  className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                >
+                  Create First Class
+                </button>
               </div>
             ) : (
-              <div className="space-y-4">
-                {classes.slice(0, 5).map(cls => (
-                  <div 
-                    key={cls.id} 
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {classes.map((cls) => (
+                  <button
+                    key={cls.id}
                     onClick={() => router.push(`/classes/${cls.id}`)}
+                    className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105 border-2 border-gray-100 hover:border-green-300 text-left"
                   >
-                    <div>
-                      <h3 className="font-medium text-gray-900">{cls.name}</h3>
-                      <p className="text-sm text-gray-500">
-                        Created {new Date(cls.createdAt).toLocaleDateString()}
-                      </p>
+                    {/* Circles representing students */}
+                    <div className="flex flex-wrap gap-2 mb-6">
+                      {cls.students && cls.students.length > 0 ? (
+                        cls.students.slice(0, 12).map((student) => (
+                          <div
+                            key={student.id}
+                            className="w-10 h-10 rounded-full bg-green-400 hover:bg-green-500 transition-colors"
+                            title={student.name}
+                          ></div>
+                        ))
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gray-200"></div>
+                      )}
                     </div>
-                    <div className="text-sm text-gray-400">
+                    
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">
+                      {cls.name}
+                    </h3>
+                    
+                    <p className="text-sm text-gray-500">
                       {cls.students?.length || 0} students
-                    </div>
-                  </div>
+                    </p>
+                  </button>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
       </div>
     </div>
   );

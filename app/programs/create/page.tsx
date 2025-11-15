@@ -2,40 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function CreateProgramPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({
-    title: '',
-    description: ''
-  });
+  const [name, setName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleInputChange = (field: keyof typeof formData, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-    if (error) setError('');
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.title.trim()) {
-      setError('Program title is required');
+    if (!name.trim()) {
       return;
     }
 
     setIsCreating(true);
-    setError('');
 
     try {
       const response = await fetch('/api/programs', {
@@ -43,134 +23,76 @@ export default function CreateProgramPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          title: name.trim(),
+          description: ''
+        }),
       });
 
       const data = await response.json();
 
       if (data.success) {
         router.push(`/programs/${data.data.id}`);
-      } else {
-        setError(data.message || 'Failed to create program');
       }
-    } catch (error) {
-      setError('An unexpected error occurred');
+    } catch (err) {
+      console.error('Failed to create program:', err);
     } finally {
       setIsCreating(false);
     }
   };
 
   return (
-    <div className="container mx-auto px-6 py-8 max-w-2xl">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Create New Program</h1>
-        <p className="text-gray-600 mt-2">
-          Design a learning program with interconnected lessons for your students.
-        </p>
-      </div>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
+      <div className="w-full max-w-md">
+        <button
+          onClick={() => router.back()}
+          className="text-gray-500 hover:text-gray-700 mb-8 text-sm"
+        >
+          ← Back
+        </button>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Program Details</CardTitle>
-        </CardHeader>
-        
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-6">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+        <div className="bg-white rounded-2xl p-12 shadow-lg">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+              <span className="text-4xl">📚</span>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">New Program</h1>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="title">Program Title *</Label>
-              <Input
-                id="title"
-                value={formData.title}
-                onChange={(e) => handleInputChange('title', e.target.value)}
-                placeholder="e.g., Mathematics Fundamentals, Reading Comprehension..."
-                required
+          <form onSubmit={handleSubmit} className="space-y-6">
+
+            <div>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Program name"
+                className="w-full px-4 py-4 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
                 disabled={isCreating}
+                autoFocus
               />
-              <p className="text-sm text-gray-500">
-                Choose a clear, descriptive name for your learning program.
-              </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Program Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                placeholder="Describe the goals, objectives, and scope of this program..."
-                rows={4}
-                disabled={isCreating}
-                className="resize-none"
-              />
-              <p className="text-sm text-gray-500">
-                Explain what students will learn and achieve through this program.
-              </p>
-            </div>
-
-            {/* Program Creation Tips */}
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h3 className="font-medium text-blue-900 mb-2">💡 Program Creation Tips</h3>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>• Start with a clear learning objective</li>
-                <li>• Break complex topics into manageable lessons</li>
-                <li>• Consider prerequisite relationships between lessons</li>
-                <li>• Plan for different learning levels and paces</li>
-              </ul>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4">
-              <Button 
-                type="button" 
-                variant="outline" 
+            <div className="flex gap-3">
+              <button
+                type="button"
                 onClick={() => router.back()}
+                className="flex-1 px-6 py-4 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
                 disabled={isCreating}
               >
                 Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={isCreating || !formData.title.trim()}
+              </button>
+              <button
+                type="submit"
+                disabled={isCreating || !name.trim()}
+                className="flex-1 px-6 py-4 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreating ? 'Creating Program...' : 'Create Program'}
-              </Button>
+                {isCreating ? 'Creating...' : 'Create'}
+              </button>
             </div>
-          </CardContent>
-        </form>
-      </Card>
-
-      {/* Next Steps Preview */}
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="text-lg">What's Next?</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-sm text-gray-600">
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">1</div>
-              <span>Add lessons to your program</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">2</div>
-              <span>Connect lessons with learning relationships</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">3</div>
-              <span>Add test data and assessment materials</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">4</div>
-              <span>Assign to classes and track student progress</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }
