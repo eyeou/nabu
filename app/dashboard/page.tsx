@@ -44,6 +44,30 @@ export default function DashboardPage() {
     router.push('/classes/create');
   };
 
+  const handleDeleteClass = async (classId: string, className: string) => {
+    if (!confirm(`Are you sure you want to delete the class "${className}"? This will also delete all students in this class.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/classes/${classId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Remove the class from the state
+        setClasses(classes.filter(c => c.id !== classId));
+      } else {
+        alert(data.message || 'Failed to delete class');
+      }
+    } catch (error) {
+      console.error('Error deleting class:', error);
+      alert('Failed to delete class');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -169,34 +193,50 @@ export default function DashboardPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {classes.map((cls) => (
-                  <button
+                  <div
                     key={cls.id}
-                    onClick={() => router.push(`/classes/${cls.id}`)}
-                    className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105 border-2 border-gray-100 hover:border-green-300 text-left"
+                    className="relative group"
                   >
-                    {/* Circles representing students */}
-                    <div className="flex flex-wrap gap-2 mb-6">
-                      {cls.students && cls.students.length > 0 ? (
-                        cls.students.slice(0, 12).map((student) => (
-                          <div
-                            key={student.id}
-                            className="w-10 h-10 rounded-full bg-green-400 hover:bg-green-500 transition-colors"
-                            title={student.name}
-                          ></div>
-                        ))
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gray-200"></div>
-                      )}
-                    </div>
-                    
-                    <h3 className="text-xl font-bold text-gray-800 mb-2">
-                      {cls.name}
-                    </h3>
-                    
-                    <p className="text-sm text-gray-500">
-                      {cls.students?.length || 0} students
-                    </p>
-                  </button>
+                    <button
+                      onClick={() => router.push(`/classes/${cls.id}`)}
+                      className="w-full bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105 border-2 border-gray-100 hover:border-green-300 text-left"
+                    >
+                      {/* Circles representing students */}
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        {cls.students && cls.students.length > 0 ? (
+                          cls.students.slice(0, 12).map((student) => (
+                            <div
+                              key={student.id}
+                              className="w-10 h-10 rounded-full bg-green-400 hover:bg-green-500 transition-colors"
+                              title={student.name}
+                            ></div>
+                          ))
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gray-200"></div>
+                        )}
+                      </div>
+                      
+                      <h3 className="text-xl font-bold text-gray-800 mb-2">
+                        {cls.name}
+                      </h3>
+                      
+                      <p className="text-sm text-gray-500">
+                        {cls.students?.length || 0} students
+                      </p>
+                    </button>
+
+                    {/* Delete button - appears on hover */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClass(cls.id, cls.name);
+                      }}
+                      className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 flex items-center justify-center text-xs font-bold shadow-lg"
+                      title="Delete class"
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
