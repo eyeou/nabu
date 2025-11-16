@@ -44,6 +44,30 @@ export default function DashboardPage() {
     router.push('/classes/create');
   };
 
+  const handleDeleteProgram = async (programId: string, programTitle: string) => {
+    if (!confirm(`Are you sure you want to delete the program "${programTitle}"? This will also delete all lessons in this program.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/programs/${programId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Remove the program from the state
+        setPrograms(programs.filter(p => p.id !== programId));
+      } else {
+        alert(data.message || 'Failed to delete program');
+      }
+    } catch (error) {
+      console.error('Error deleting program:', error);
+      alert('Failed to delete program');
+    }
+  };
+
   const handleDeleteClass = async (classId: string, className: string) => {
     if (!confirm(`Are you sure you want to delete the class "${className}"? This will also delete all students in this class.`)) {
       return;
@@ -133,36 +157,52 @@ export default function DashboardPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {programs.map((program) => (
-                  <button
+                  <div
                     key={program.id}
-                    onClick={() => router.push(`/programs/${program.id}`)}
-                    className="bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105 border-2 border-gray-100 hover:border-blue-300 text-left"
+                    className="relative group"
                   >
-                    {/* Circles representing lessons */}
-                    <div className="flex flex-wrap gap-2 mb-6">
-                      {program.lessons && program.lessons.length > 0 ? (
-                        program.lessons.slice(0, 12).map((lesson) => (
-                          <div
-                            key={lesson.id}
-                            className="w-10 h-10 rounded-full bg-blue-400 hover:bg-blue-500 transition-colors"
-                            title={lesson.title}
-                          ></div>
-                        ))
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gray-200"></div>
+                    <button
+                      onClick={() => router.push(`/programs/${program.id}`)}
+                      className="w-full bg-white rounded-2xl p-8 shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105 border-2 border-gray-100 hover:border-blue-300 text-left"
+                    >
+                      {/* Circles representing lessons */}
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        {program.lessons && program.lessons.length > 0 ? (
+                          program.lessons.slice(0, 12).map((lesson) => (
+                            <div
+                              key={lesson.id}
+                              className="w-10 h-10 rounded-full bg-blue-400 hover:bg-blue-500 transition-colors"
+                              title={lesson.title}
+                            ></div>
+                          ))
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gray-200"></div>
+                        )}
+                      </div>
+                      
+                      <h3 className="text-xl font-bold text-gray-800 mb-2">
+                        {program.title}
+                      </h3>
+                      
+                      {program.description && (
+                        <p className="text-sm text-gray-500 line-clamp-2">
+                          {program.description}
+                        </p>
                       )}
-                    </div>
-                    
-                    <h3 className="text-xl font-bold text-gray-800 mb-2">
-                      {program.title}
-                    </h3>
-                    
-                    {program.description && (
-                      <p className="text-sm text-gray-500 line-clamp-2">
-                        {program.description}
-                      </p>
-                    )}
-                  </button>
+                    </button>
+
+                    {/* Delete button - appears on hover */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteProgram(program.id, program.title);
+                      }}
+                      className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 flex items-center justify-center text-xs font-bold shadow-lg"
+                      title="Delete program"
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
