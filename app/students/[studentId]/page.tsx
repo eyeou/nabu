@@ -177,44 +177,8 @@ export default function StudentProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Progress Overview */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Learning Progress Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Overall Progress */}
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-medium">Overall Progress</span>
-                    <span className="text-sm text-gray-600">{getOverallProgress()}%</span>
-                  </div>
-                  <Progress value={getOverallProgress()} className="h-3" />
-                </div>
-
-                {/* Mastery Distribution */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-400">{masteryDistribution.not_started}</div>
-                    <div className="text-sm text-gray-600">Not Started</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-yellow-500">{masteryDistribution.in_progress}</div>
-                    <div className="text-sm text-gray-600">In Progress</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-500">{masteryDistribution.completed}</div>
-                    <div className="text-sm text-gray-600">Completed</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-500">{masteryDistribution.mastered}</div>
-                    <div className="text-sm text-gray-600">Mastered</div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* AI Feedback Summary */}
+          <AISummaryBox summaries={summaries} loading={false} />
 
           {/* Program Graph with Student Progress */}
           <div>
@@ -276,9 +240,6 @@ export default function StudentProfilePage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* AI Summary Box */}
-          <AISummaryBox summaries={summaries} loading={false} />
-
           {/* Recent Exams */}
           <Card>
             <CardHeader>

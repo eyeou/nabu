@@ -258,7 +258,7 @@ export default function ProgramPage() {
       {/* Lesson detail + upload modal */}
       {selectedLesson && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 sm:p-8 z-50">
-          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-6">
               <div>
                 <p className="text-xs uppercase text-gray-400">Lesson</p>
@@ -278,6 +278,19 @@ export default function ProgramPage() {
                 <p className="text-gray-600">
                   {selectedLesson.description?.trim() || 'No description yet.'}
                 </p>
+              </div>
+
+              {/* Previous Tests Section */}
+              <div className="border rounded-xl p-5 space-y-4 bg-gray-50">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Previous Tests</h3>
+                  <p className="text-sm text-gray-500">
+                    View previously uploaded exam files for this lesson
+                  </p>
+                </div>
+                <div className="text-sm text-gray-500">
+                  📁 No previous tests uploaded yet
+                </div>
               </div>
 
               <div className="border rounded-xl p-5 space-y-4 bg-gray-50">
@@ -371,34 +384,6 @@ export default function ProgramPage() {
                 </div>
               </div>
 
-              {generatedSummaries.length > 0 && (
-                <div className="border rounded-xl p-5 space-y-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-800">AI summary refreshed</h3>
-                    <p className="text-sm text-gray-500">
-                      These bullet points were pushed to the student profile automatically.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    {generatedSummaries.map(summary => (
-                      <div key={summary.id} className="border rounded-lg p-4 bg-gray-50">
-                        <p className="text-xs uppercase text-gray-400 mb-2">{summary.subject}</p>
-                        <ul className="space-y-2 text-sm text-gray-700">
-                          {JSON.parse(summary.bulletPointsJson || '[]').map(
-                            (point: string, index: number) => (
-                              <li key={index} className="flex gap-2 items-start">
-                                <span className="text-blue-400 mt-0.5">•</span>
-                                <span>{point}</span>
-                              </li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
