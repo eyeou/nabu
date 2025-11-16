@@ -433,4 +433,131 @@ function fallbackExamAnalysis(lessonTitle?: string): ExamAnalysisResult {
   };
 }
 
+export interface ExtractedStudent {
+  name: string;
+  age?: number;
+}
+
+export interface StudentRegistryExtractionResult {
+  students: ExtractedStudent[];
+  rawText?: string;
+  detectedFormat?: string;
+}
+
+export async function extractStudentsFromRegistry(params: {
+  imageUrls: string[];
+}): Promise<StudentRegistryExtractionResult> {
+  const { imageUrls } = params;
+
+  if (imageUrls.length === 0) {
+    throw new Error('At least one image URL is required');
+  }
+
+  const instructions =
+    'You are an expert at reading class registries and student lists. You will be given one or more images of a class registry, student roster, or list. ' +
+    'Your task is to extract ALL student names and their ages (if available) from the document. ' +
+    'The document may be in various formats: handwritten lists, printed tables, PDFs, spreadsheets, or forms. ' +
+    'Output a SINGLE JSON object with the following shape:\n' +
+    '{\n' +
+    '  "students": [\n' +
+    '    {\n' +
+    '      "name": string (full name of the student),\n' +
+    '      "age": number (optional, only if clearly stated)\n' +
+    '    }\n' +
+    '  ],\n' +
+    '  "rawText": string (the raw text extracted from the document),\n' +
+    '  "detectedFormat": string (description of the document format)\n' +
+    '}\n' +
+    'Important guidelines:\n' +
+    '- Extract ALL students from the document, do not skip any\n' +
+    '- If age is not clearly stated, omit the age field for that student\n' +
+    '- Clean up names (proper capitalization, remove extra spaces)\n' +
+    '- If you see birth dates, calculate the age\n' +
+    '- Ignore headers, footers, and non-student information\n' +
+    '- Do not include any explanation outside of the JSON.';
+
+  const contentParts: Array<TextContentPart | ImageContentPart> = [
+    {
+      type: 'text' as const,
+      text: 'Extract all student names and ages from this class registry document. Return only the JSON object.'
+    }
+  ];
+
+  for (const imageUrl of imageUrls) {
+    contentParts.push({
+      type: 'image_url' as const,
+      image_url: {
+        url: imageUrl
+      }
+    });
+  }
+
+  const messages: Array<{
+    role: 'system' | 'user' | 'assistant';
+    content: MessageContent;
+  }> = [
+    {
+      role: 'system' as const,
+      content: instructions
+    },
+    {
+      role: 'user' as const,
+      content: contentParts
+    }
+  ];
+
+  const body = {
+    model: DEFAULT_VISION_MODEL,
+    temperature: 0.1,
+    messages
+  };
+
+  try {
+    const data = await callBlackboxChat(body);
+    const content = extractMessageText(data?.choices?.[0]?.message?.content);
+
+    const parsed = JSON.parse(content || '{}') as Partial<StudentRegistryExtractionResult> & {
+      students?: unknown;
+    };
+
+    if (!Array.isArray(parsed.students)) {
+      throw new Error('Missing students array in registry extraction response');
+    }
+
+    const normalizedStudents = parsed.students.map((student, index) => {
+      const s = student as Partial<ExtractedStudent>;
+      return {
+        name: s.name || `Student ${index + 1}`,
+        age: typeof s.age === 'number' && s.age > 0 && s.age < 100 ? s.age : undefined
+      };
+    });
+
+    return {
+      students: normalizedStudents,
+      rawText: parsed.rawText,
+      detectedFormat: parsed.detectedFormat
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message === 'BLACKBOX_API_KEY_NOT_SET') {
+      console.warn('BLACKBOX_API_KEY is not set. Returning fallback student extraction.');
+    } else if (error instanceof Error) {
+      const extended = error as ExtendedError;
+      console.error('extractStudentsFromRegistry error:', error.message, extended.details);
+    }
+    return fallbackStudentExtraction();
+  }
+}
+
+function fallbackStudentExtraction(): StudentRegistryExtractionResult {
+  return {
+    students: [
+      { name: 'Sample Student 1', age: 10 },
+      { name: 'Sample Student 2', age: 11 },
+      { name: 'Sample Student 3', age: 10 }
+    ],
+    rawText: 'Fallback extraction used due to missing AI credentials or parsing error.',
+    detectedFormat: 'Fallback mode'
+  };
+}
+
 

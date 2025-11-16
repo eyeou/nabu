@@ -5,7 +5,7 @@ import { getTeacherFromRequest } from '@/lib/auth';
 // GET /api/students/[studentId] - Fetch specific student with progress
 export async function GET(
   request: NextRequest,
-  { params }: { params: { studentId: string } }
+  { params }: { params: Promise<{ studentId: string }> }
 ) {
   try {
     const teacher = await getTeacherFromRequest(request);
@@ -16,8 +16,10 @@ export async function GET(
       }), { status: 401 });
     }
 
+    const { studentId } = await params;
+
     const student = await prisma.student.findFirst({
-      where: { id: params.studentId },
+      where: { id: studentId },
       include: {
         class: {
           select: {

@@ -15,6 +15,7 @@ type StoredQuestion = {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
+import StudentRegistryUpload, { ExtractedStudent } from '@/components/StudentRegistryUpload';
 
 export default function ClassPage() {
   const params = useParams();
@@ -27,6 +28,8 @@ export default function ClassPage() {
   const [selectedStudentDetails, setSelectedStudentDetails] = useState<Student | null>(null);
   const [loading, setLoading] = useState(true);
   const [studentDetailLoading, setStudentDetailLoading] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const fetchClass = useCallback(async () => {
     try {
@@ -87,9 +90,62 @@ export default function ClassPage() {
     }
   };
 
+  const handleDeleteStudent = async (studentId: string, studentName: string) => {
+    if (!confirm(`Are you sure you want to delete ${studentName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/students/${studentId}`, {
+        method: 'DELETE'
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        // Remove from students list
+        setStudents(students.filter(s => s.id !== studentId));
+        // Close detail panel if this student was selected
+        if (selectedStudent?.id === studentId) {
+          setSelectedStudent(null);
+          setSelectedStudentDetails(null);
+        }
+      } else {
+        alert(data.message || 'Failed to delete student');
+      }
+    } catch (error) {
+      console.error('Failed to delete student:', error);
+      alert('Failed to delete student');
+    }
+  };
+
   const handleStudentClick = (student: Student) => {
     setSelectedStudent(student);
     fetchStudentDetails(student.id);
+  };
+
+  const handleStudentsExtracted = async (extractedStudents: ExtractedStudent[]) => {
+    setIsImporting(true);
+
+    try {
+      const response = await fetch('/api/students/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId,
+          students: extractedStudents
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setShowImportModal(false);
+        await fetchClass();
+      }
+    } catch (error) {
+      console.error('Failed to import students:', error);
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   if (loading) {
@@ -123,12 +179,20 @@ export default function ClassPage() {
               </button>
               <h1 className="text-3xl font-bold text-gray-800">{classData.name}</h1>
             </div>
-            <button
-              onClick={handleAddStudent}
-              className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
-            >
-              + New Student
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+              >
+                📄 Import Students
+              </button>
+              <button
+                onClick={handleAddStudent}
+                className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+              >
+                + New Student
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -148,18 +212,27 @@ export default function ClassPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-8">
             {students.map((student) => (
-              <button
-                key={student.id}
-                onClick={() => handleStudentClick(student)}
-                className="flex flex-col items-center group"
-              >
-                <div className="w-24 h-24 rounded-full bg-green-400 hover:bg-green-500 transition-all duration-300 group-hover:scale-110 shadow-lg flex items-center justify-center text-white font-bold text-lg">
+              <div key={student.id} className="flex flex-col items-center group relative">
+                <button
+                  onClick={() => handleStudentClick(student)}
+                  className="w-24 h-24 rounded-full bg-green-400 hover:bg-green-500 transition-all duration-300 group-hover:scale-110 shadow-lg flex items-center justify-center text-white font-bold text-lg relative"
+                >
                   {student.name.charAt(0).toUpperCase()}
-                </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteStudent(student.id, student.name);
+                  }}
+                  className="absolute top-0 right-0 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                  title={`Delete ${student.name}`}
+                >
+                  ×
+                </button>
                 <div className="mt-3 text-sm text-gray-700 text-center font-medium">
                   {student.name}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -182,15 +255,24 @@ export default function ClassPage() {
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  setSelectedStudent(null);
-                  setSelectedStudentDetails(null);
-                }}
-                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
-              >
-                ×
-              </button>
+              <div className="flex gap-2 items-start">
+                <button
+                  onClick={() => handleDeleteStudent(selectedStudent.id, selectedStudent.name)}
+                  className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  title="Delete student"
+                >
+                  Delete
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedStudent(null);
+                    setSelectedStudentDetails(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between">
@@ -296,6 +378,29 @@ export default function ClassPage() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Students Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 sm:p-8 z-50">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Import Students</h2>
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                disabled={isImporting}
+              >
+                ×
+              </button>
+            </div>
+
+            <StudentRegistryUpload
+              onStudentsExtracted={handleStudentsExtracted}
+              onCancel={() => setShowImportModal(false)}
+            />
           </div>
         </div>
       )}

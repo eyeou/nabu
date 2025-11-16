@@ -170,6 +170,29 @@ export interface CreateStudentRequest {
   avatarUrl?: string;
 }
 
+export interface BulkCreateStudentsRequest {
+  classId: string;
+  students: Array<{
+    name: string;
+    age?: number;
+  }>;
+}
+
+export interface ExtractStudentsRequest {
+  imageUrls: string[];
+}
+
+export interface ExtractedStudentData {
+  name: string;
+  age?: number;
+}
+
+export interface StudentRegistryExtractionResult {
+  students: ExtractedStudentData[];
+  rawText?: string;
+  detectedFormat?: string;
+}
+
 export interface UpdateStudentStatusRequest {
   studentId: string;
   lessonId: string;
