@@ -4,8 +4,16 @@ import { AISummaryBoxProps } from '@/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
 
-export default function AISummaryBox({ summaries, loading = false }: AISummaryBoxProps) {
+export default function AISummaryBox({
+  summaries,
+  loading = false,
+  refreshing = false,
+  onRefresh,
+  refreshError,
+  refreshMessage
+}: AISummaryBoxProps) {
   const parseJsonBulletPoints = (jsonString: string) => {
     try {
       const parsed = JSON.parse(jsonString);
@@ -51,6 +59,37 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
     return subjectLabels[subject.toLowerCase()] || subject.charAt(0).toUpperCase() + subject.slice(1);
   };
 
+  const handleRefreshClick = () => {
+    if (onRefresh && !refreshing) {
+      onRefresh();
+    }
+  };
+
+  const renderRefreshSection = (withDivider = true) => {
+    if (!onRefresh) return null;
+
+    return (
+      <div className={withDivider ? 'pt-4 border-t border-gray-100' : 'mt-6'}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full flex items-center justify-center gap-2"
+          onClick={handleRefreshClick}
+          disabled={refreshing}
+        >
+          {refreshing && <Loader2 className="h-4 w-4 animate-spin" />}
+          {refreshing ? 'Analyse en cours…' : 'Relancer l’analyse'}
+        </Button>
+        {refreshMessage && (
+          <p className="text-xs text-green-600 text-center mt-2">{refreshMessage}</p>
+        )}
+        {refreshError && (
+          <p className="text-xs text-red-600 text-center mt-2">{refreshError}</p>
+        )}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <Card>
@@ -92,6 +131,7 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
               L’analyse apparaîtra automatiquement dès qu’une copie de l’élève aura été importée et traitée.
             </p>
           </div>
+          {renderRefreshSection(false)}
         </CardContent>
       </Card>
     );
@@ -135,11 +175,7 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
           );
         })}
         
-        <div className="pt-4 border-t border-gray-100">
-          <Button variant="outline" size="sm" className="w-full">
-            Relancer l’analyse
-          </Button>
-        </div>
+        {renderRefreshSection(true)}
       </CardContent>
     </Card>
   );

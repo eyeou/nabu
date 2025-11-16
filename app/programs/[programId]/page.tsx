@@ -38,6 +38,10 @@ export default function ProgramPage() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
+  const [programDeleteLoading, setProgramDeleteLoading] = useState(false);
+  const [programDeleteError, setProgramDeleteError] = useState<string | null>(null);
+  const [deletingLessonId, setDeletingLessonId] = useState<string | null>(null);
+  const [lessonDeleteError, setLessonDeleteError] = useState<string | null>(null);
 
   const [classes, setClasses] = useState<ClassWithStudents[]>([]);
   const [classesLoading, setClassesLoading] = useState(false);
@@ -114,10 +118,74 @@ export default function ProgramPage() {
     }
   };
 
+  const handleDeleteProgram = async () => {
+    if (!program) return;
+    const confirmed = window.confirm(
+      `Supprimer définitivement le programme "${program.title}" ? Toutes les leçons et évaluations associées seront supprimées.`
+    );
+
+    if (!confirmed) return;
+
+    setProgramDeleteLoading(true);
+    setProgramDeleteError(null);
+
+    try {
+      const response = await fetch(`/api/programs/${program.id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        router.push('/dashboard?view=programs');
+      } else {
+        setProgramDeleteError(data.message || 'Impossible de supprimer ce programme.');
+      }
+    } catch (error) {
+      console.error('Failed to delete program:', error);
+      setProgramDeleteError('Une erreur est survenue pendant la suppression du programme.');
+    } finally {
+      setProgramDeleteLoading(false);
+    }
+  };
+
   const handleLessonClick = (lesson: Lesson) => {
     setSelectedLesson(lesson);
     setUploadMessage(null);
     setProcessedResults([]);
+    setLessonDeleteError(null);
+  };
+
+  const handleDeleteLesson = async (lesson: Lesson) => {
+    const confirmed = window.confirm(
+      `Supprimer définitivement la leçon "${lesson.title}" ainsi que ses évaluations ?`
+    );
+    if (!confirmed) return;
+
+    setDeletingLessonId(lesson.id);
+    setLessonDeleteError(null);
+
+    try {
+      const response = await fetch(`/api/lessons/${lesson.id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setLessons(prev => prev.filter(l => l.id !== lesson.id));
+        if (selectedLesson?.id === lesson.id) {
+          setSelectedLesson(null);
+        }
+      } else {
+        setLessonDeleteError(data.message || 'Impossible de supprimer cette leçon.');
+      }
+    } catch (error) {
+      console.error('Failed to delete lesson:', error);
+      setLessonDeleteError('Une erreur est survenue pendant la suppression de la leçon.');
+    } finally {
+      setDeletingLessonId(null);
+    }
   };
 
   const handleClassChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -226,7 +294,7 @@ export default function ProgramPage() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="container mx-auto px-8 py-6">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap justify-between gap-4 items-center">
             <div>
               <button
                 onClick={() => router.push('/dashboard?view=programs')}
@@ -236,12 +304,26 @@ export default function ProgramPage() {
               </button>
               <h1 className="text-3xl font-bold text-gray-800">{program.title}</h1>
             </div>
-            <button
-              onClick={handleCreateLesson}
-              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-            >
-              + Nouvelle leçon
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-wrap gap-3 justify-end">
+                <button
+                  onClick={handleCreateLesson}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                >
+                  + Nouvelle leçon
+                </button>
+                <button
+                  onClick={handleDeleteProgram}
+                  disabled={programDeleteLoading}
+                  className="px-6 py-3 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {programDeleteLoading ? 'Suppression…' : 'Supprimer le programme'}
+                </button>
+              </div>
+              {programDeleteError && (
+                <p className="text-sm text-red-600 text-right">{programDeleteError}</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -259,21 +341,40 @@ export default function ProgramPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-8">
-            {lessons.map(lesson => (
-              <button
-                key={lesson.id}
-                onClick={() => handleLessonClick(lesson)}
-                className="flex flex-col items-center group"
-              >
-                <div className="w-24 h-24 rounded-full bg-blue-400 hover:bg-blue-500 transition-all duration-300 group-hover:scale-110 shadow-lg flex items-center justify-center text-white font-bold text-lg">
-                  {lesson.orderIndex + 1}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-8">
+              {lessons.map(lesson => (
+                <div key={lesson.id} className="relative flex flex-col items-center group">
+                  <button
+                    type="button"
+                    onClick={() => handleLessonClick(lesson)}
+                    className="flex flex-col items-center group w-full"
+                  >
+                    <div className="w-24 h-24 rounded-full bg-blue-400 hover:bg-blue-500 transition-all duration-300 group-hover:scale-110 shadow-lg flex items-center justify-center text-white font-bold text-lg mx-auto">
+                      {lesson.orderIndex + 1}
+                    </div>
+                    <div className="mt-3 text-sm text-gray-700 text-center font-medium">
+                      {lesson.title}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDeleteLesson(lesson);
+                    }}
+                    disabled={deletingLessonId === lesson.id}
+                    className="absolute top-0 right-0 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 disabled:opacity-70"
+                    title={`Supprimer ${lesson.title}`}
+                  >
+                    {deletingLessonId === lesson.id ? '…' : '×'}
+                  </button>
                 </div>
-                <div className="mt-3 text-sm text-gray-700 text-center font-medium">
-                  {lesson.title}
-                </div>
-              </button>
-            ))}
+              ))}
+            </div>
+            {lessonDeleteError && !selectedLesson && (
+              <p className="text-sm text-red-600">{lessonDeleteError}</p>
+            )}
           </div>
         )}
       </div>
@@ -282,18 +383,34 @@ export default function ProgramPage() {
       {selectedLesson && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 sm:p-8 z-50">
           <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-6">
+            <div className="flex justify-between items-start mb-6 gap-4">
               <div>
                 <p className="text-xs uppercase text-gray-400">Leçon</p>
                 <h2 className="text-2xl font-bold text-gray-800">{selectedLesson.title}</h2>
               </div>
-              <button
-                onClick={() => setSelectedLesson(null)}
-                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => handleDeleteLesson(selectedLesson)}
+                  disabled={deletingLessonId === selectedLesson.id}
+                  className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-1 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deletingLessonId === selectedLesson.id ? 'Suppression…' : 'Supprimer la leçon'}
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedLesson(null);
+                    setLessonDeleteError(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                  aria-label="Fermer"
+                >
+                  ×
+                </button>
+              </div>
             </div>
+            {lessonDeleteError && (
+              <p className="text-sm text-red-600 mb-4">{lessonDeleteError}</p>
+            )}
 
             <div className="space-y-8">
               <div>

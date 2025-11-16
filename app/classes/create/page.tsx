@@ -12,6 +12,7 @@ export default function CreateClassPage() {
   const [name, setName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [createdClassId, setCreatedClassId] = useState<string>('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +22,7 @@ export default function CreateClassPage() {
     }
 
     setIsCreating(true);
+    setBulkError(null);
 
     try {
       const response = await fetch('/api/classes', {
@@ -59,6 +61,7 @@ export default function CreateClassPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           classId: createdClassId,
           students
@@ -69,9 +72,12 @@ export default function CreateClassPage() {
 
       if (data.success) {
         router.push(`/classes/${createdClassId}`);
+      } else {
+        setBulkError(data.message || 'Impossible de créer les élèves automatiquement.');
       }
     } catch (err) {
       console.error('Failed to create students:', err);
+      setBulkError("Une erreur est survenue pendant la création automatique des élèves.");
     } finally {
       setIsCreating(false);
     }
@@ -124,6 +130,11 @@ export default function CreateClassPage() {
             </div>
 
             <div className="space-y-4">
+              {bulkError && (
+                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
+                  {bulkError}
+                </div>
+              )}
               <button
                 onClick={() => setStep('upload-registry')}
                 className="w-full px-6 py-4 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium flex items-center justify-center gap-2"

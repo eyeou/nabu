@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import AISummaryBox from '@/components/AISummaryBox';
 import ProgramGraph from '@/components/ProgramGraph';
@@ -30,7 +29,12 @@ const masteryLabelMap: Record<string, string> = {
 export default function StudentProfilePage() {
   const params = useParams();
   const router = useRouter();
-  const studentId = params.studentId as string;
+  const rawStudentId = params?.studentId;
+  const studentId = Array.isArray(rawStudentId)
+    ? rawStudentId[0]
+    : typeof rawStudentId === 'string'
+      ? rawStudentId
+      : undefined;
 
   const [student, setStudent] = useState<Student | null>(null);
   const [summaries, setSummaries] = useState<StudentSummary[]>([]);
@@ -46,7 +50,24 @@ export default function StudentProfilePage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [summaryRefreshing, setSummaryRefreshing] = useState(false);
+  const [summaryRefreshMessage, setSummaryRefreshMessage] = useState<string | null>(null);
+  const [summaryRefreshError, setSummaryRefreshError] = useState<string | null>(null);
   const fetchStudent = useCallback(async () => {
+    if (!studentId) {
+      setStudent(null);
+      setSummaries([]);
+      setLessonStatuses([]);
+      setLessons([]);
+      setLinks([]);
+      setStudentAssessments([]);
+      setStudentComments([]);
+      setLoadError('Impossible de retrouver cet élève (identifiant manquant). Vérifiez l’URL.');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     try {
       const response = await fetch(`/api/students/${studentId}`, {
         credentials: 'include'
@@ -89,37 +110,16 @@ export default function StudentProfilePage() {
     fetchStudent();
   }, [fetchStudent]);
 
-  const getOverallProgress = () => {
-    if (lessonStatuses.length === 0) return 0;
-    
-    const completedCount = lessonStatuses.filter(status => 
-      ['completed', 'mastered'].includes(status.masteryLevel)
-    ).length;
-    
-    return Math.round((completedCount / lessonStatuses.length) * 100);
-  };
-
-  const getMasteryDistribution = () => {
-    const distribution = {
-      not_started: 0,
-      in_progress: 0,
-      completed: 0,
-      mastered: 0
-    };
-
-    lessonStatuses.forEach(status => {
-      distribution[status.masteryLevel as keyof typeof distribution]++;
-    });
-
-    return distribution;
-  };
-
   const formatMasteryLabel = (mastery: string) => {
     return masteryLabelMap[mastery] || mastery;
   };
 
   const handleSubmitComment = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!studentId) {
+      setCommentError('Impossible de retrouver cet élève pour le moment.');
+      return;
+    }
     if (!newComment.trim()) {
       setCommentError('Ajoutez un commentaire avant de valider.');
       return;
@@ -152,7 +152,7 @@ export default function StudentProfilePage() {
   };
 
   const handleDeleteStudent = async () => {
-    if (!student) return;
+    if (!student || !studentId) return;
     const confirmed = window.confirm(
       'Supprimer définitivement cet élève ? Toutes les copies, commentaires et statuts associés seront supprimés.'
     );
@@ -178,6 +178,41 @@ export default function StudentProfilePage() {
       setDeleteSubmitting(false);
     }
   };
+
+  const handleRegenerateSummaries = useCallback(async () => {
+    if (!studentId) {
+      setSummaryRefreshError('Impossible de relancer l’analyse sans identifiant élève.');
+      return;
+    }
+
+    setSummaryRefreshing(true);
+    setSummaryRefreshError(null);
+    setSummaryRefreshMessage(null);
+
+    try {
+      const response = await fetch('/api/summaries/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ studentId })
+      });
+      const data = await response.json();
+
+      if (data.success && Array.isArray(data.data)) {
+        setSummaries(data.data as StudentSummary[]);
+        setSummaryRefreshMessage('Analyse IA mise à jour.');
+      } else {
+        setSummaryRefreshError(data.message || 'Impossible de relancer l’analyse.');
+      }
+    } catch (error) {
+      console.error('Failed to regenerate summaries:', error);
+      setSummaryRefreshError('Impossible de relancer l’analyse.');
+    } finally {
+      setSummaryRefreshing(false);
+    }
+  }, [studentId]);
 
   if (loading) {
     return (
@@ -210,8 +245,6 @@ export default function StudentProfilePage() {
       </div>
     );
   }
-
-  const masteryDistribution = getMasteryDistribution();
 
   return (
     <div className="container mx-auto px-6 py-8">
@@ -262,44 +295,6 @@ export default function StudentProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Progress Overview */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Vue d’ensemble des progrès</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Overall Progress */}
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-medium">Progression globale</span>
-                    <span className="text-sm text-gray-600">{getOverallProgress()}%</span>
-                  </div>
-                  <Progress value={getOverallProgress()} className="h-3" />
-                </div>
-
-                {/* Mastery Distribution */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-gray-400">{masteryDistribution.not_started}</div>
-                    <div className="text-sm text-gray-600">Non commencé</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-yellow-500">{masteryDistribution.in_progress}</div>
-                    <div className="text-sm text-gray-600">En cours</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-500">{masteryDistribution.completed}</div>
-                    <div className="text-sm text-gray-600">Terminé</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-500">{masteryDistribution.mastered}</div>
-                    <div className="text-sm text-gray-600">Maîtrisé</div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
           {/* Program Graph with Student Progress */}
           <div>
@@ -324,39 +319,165 @@ export default function StudentProfilePage() {
             )}
           </div>
 
-          {/* Recent Activity */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Activité récente</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {lessonStatuses.length > 0 ? (
-                <div className="space-y-4">
-                  {lessonStatuses
-                    .filter(status => status.updatedAt)
-                    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-                    .slice(0, 5)
-                    .map(status => (
-                      <div key={status.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <h4 className="font-medium">{status.lesson?.title}</h4>
-                          <p className="text-sm text-gray-600">
-                            Nouveau statut : {formatMasteryLabel(status.masteryLevel)}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* Recent Activity */}
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle>Activité récente</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {lessonStatuses.length > 0 ? (
+                  <div className="space-y-4">
+                    {lessonStatuses
+                      .filter(status => status.updatedAt)
+                      .sort(
+                        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+                      )
+                      .slice(0, 5)
+                      .map(status => (
+                        <div
+                          key={status.id}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                        >
+                          <div>
+                            <h4 className="font-medium">{status.lesson?.title}</h4>
+                            <p className="text-sm text-gray-600">
+                              Nouveau statut : {formatMasteryLabel(status.masteryLevel)}
+                            </p>
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {new Date(status.updatedAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">Aucune activité récente</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Recent Exams */}
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle className="text-lg">Examens récents</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {studentAssessments.length === 0 ? (
+                  <p className="text-sm text-gray-500">Aucune copie importée pour l’instant.</p>
+                ) : (
+                  studentAssessments.slice(0, 3).map(assessment => {
+                    const insights = parseCopyInsights(assessment.gradedResponses);
+                    const gradeDisplay =
+                      insights.gradeText ||
+                      (typeof assessment.overallScore === 'number' &&
+                      typeof assessment.maxScore === 'number'
+                        ? `${assessment.overallScore}/${assessment.maxScore}`
+                        : 'Non renseignée');
+
+                    return (
+                      <div
+                        key={assessment.id}
+                        className="border rounded-lg p-3 bg-gray-50 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-gray-800">
+                            {assessment.assessment?.title || 'Évaluation'}
                           </p>
+                          <span className="text-xs text-gray-500">
+                            {assessment.createdAt
+                              ? new Date(assessment.createdAt).toLocaleDateString()
+                              : ''}
+                          </span>
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {new Date(status.updatedAt).toLocaleDateString()}
-                        </div>
+                        <p className="text-sm text-gray-600">Note relevée : {gradeDisplay}</p>
+
+                        {insights.adviceSummary.length > 0 && (
+                          <div>
+                            <p className="text-xs uppercase text-gray-400">Conseils clés</p>
+                            <ul className="mt-1 space-y-1 text-sm text-gray-700">
+                              {insights.adviceSummary.map((advice, index) => (
+                                <li key={index} className="flex gap-2">
+                                  <span>•</span>
+                                  <span>{advice}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {insights.programRecommendations.length > 0 && (
+                          <div>
+                            <p className="text-xs uppercase text-gray-400 mb-1">
+                              Axes du programme
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {insights.programRecommendations.map((recommendation, index) => (
+                                <Badge
+                                  key={`${assessment.id}-rec-${index}`}
+                                  variant="outline"
+                                  className="whitespace-normal break-words text-left leading-tight shrink flex-wrap justify-start"
+                                >
+                                  {recommendation}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {insights.questions.length > 0 && (
+                          <details className="text-sm text-gray-600">
+                            <summary className="cursor-pointer text-blue-600">
+                              Voir les notes liées à la copie
+                            </summary>
+                            <ul className="mt-2 space-y-2 text-gray-600">
+                              {insights.questions.slice(0, 3).map((question, idx) => (
+                                <li key={idx} className="border rounded-md p-2 bg-white">
+                                  <p className="font-medium">
+                                    Q{question.number || idx + 1} : {question.questionText}
+                                  </p>
+                                  {question.studentAnswer && (
+                                    <p className="text-sm">Élève : {question.studentAnswer}</p>
+                                  )}
+                                  {question.teacherComment && (
+                                    <p className="text-sm">Note prof : {question.teacherComment}</p>
+                                  )}
+                                  {question.improvementAdvice && (
+                                    <p className="text-sm">
+                                      Conseil : {question.improvementAdvice}
+                                    </p>
+                                  )}
+                                  {!question.improvementAdvice && question.feedback && (
+                                    <p className="text-sm">
+                                      Conseil : {question.feedback}
+                                    </p>
+                                  )}
+                                  {(question.recommendedProgramFocus ||
+                                    (question.skillTags && question.skillTags.length > 0)) && (
+                                    <p className="text-xs text-gray-500">
+                                      Programme :{' '}
+                                      {[
+                                        question.recommendedProgramFocus,
+                                        ...(question.skillTags || [])
+                                      ]
+                                        .filter(Boolean)
+                                        .join(', ')}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
                       </div>
-                    ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">Aucune activité récente</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    );
+                  })
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Teacher Comments */}
           <Card>
@@ -416,119 +537,14 @@ export default function StudentProfilePage() {
         {/* Sidebar */}
         <div className="space-y-6">
           {/* AI Summary Box */}
-          <AISummaryBox summaries={summaries} loading={false} />
-
-          {/* Recent Exams */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Examens récents</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {studentAssessments.length === 0 ? (
-                <p className="text-sm text-gray-500">Aucune copie importée pour l’instant.</p>
-              ) : (
-                studentAssessments.slice(0, 3).map(assessment => {
-                  const insights = parseCopyInsights(assessment.gradedResponses);
-                  const gradeDisplay =
-                    insights.gradeText ||
-                    (typeof assessment.overallScore === 'number' &&
-                    typeof assessment.maxScore === 'number'
-                      ? `${assessment.overallScore}/${assessment.maxScore}`
-                      : 'Non renseignée');
-
-                  return (
-                      <div key={assessment.id} className="border rounded-lg p-3 bg-gray-50 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-gray-800">
-                            {assessment.assessment?.title || 'Évaluation'}
-                          </p>
-                          <span className="text-xs text-gray-500">
-                            {assessment.createdAt
-                              ? new Date(assessment.createdAt).toLocaleDateString()
-                              : ''}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600">Note relevée : {gradeDisplay}</p>
-
-                        {insights.adviceSummary.length > 0 && (
-                          <div>
-                            <p className="text-xs uppercase text-gray-400">Conseils clés</p>
-                            <ul className="mt-1 space-y-1 text-sm text-gray-700">
-                              {insights.adviceSummary.map((advice, index) => (
-                                <li key={index} className="flex gap-2">
-                                  <span>•</span>
-                                  <span>{advice}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {insights.programRecommendations.length > 0 && (
-                          <div>
-                            <p className="text-xs uppercase text-gray-400 mb-1">
-                              Axes du programme
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {insights.programRecommendations.map((recommendation, index) => (
-                                <Badge key={`${assessment.id}-rec-${index}`} variant="outline">
-                                  {recommendation}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {insights.questions.length > 0 && (
-                          <details className="text-sm text-gray-600">
-                            <summary className="cursor-pointer text-blue-600">
-                              Voir les notes liées à la copie
-                            </summary>
-                            <ul className="mt-2 space-y-2 text-gray-600">
-                              {insights.questions.slice(0, 3).map((question, idx) => (
-                                <li key={idx} className="border rounded-md p-2 bg-white">
-                                  <p className="font-medium">
-                                    Q{question.number || idx + 1} : {question.questionText}
-                                  </p>
-                                  {question.studentAnswer && (
-                                    <p className="text-sm">Élève : {question.studentAnswer}</p>
-                                  )}
-                                  {question.teacherComment && (
-                                    <p className="text-sm">Note prof : {question.teacherComment}</p>
-                                  )}
-                                  {question.improvementAdvice && (
-                                    <p className="text-sm">
-                                      Conseil : {question.improvementAdvice}
-                                    </p>
-                                  )}
-                                  {!question.improvementAdvice && question.feedback && (
-                                    <p className="text-sm">
-                                      Conseil : {question.feedback}
-                                    </p>
-                                  )}
-                                  {(question.recommendedProgramFocus ||
-                                    (question.skillTags && question.skillTags.length > 0)) && (
-                                    <p className="text-xs text-gray-500">
-                                      Programme :{' '}
-                                      {[
-                                        question.recommendedProgramFocus,
-                                        ...(question.skillTags || [])
-                                      ]
-                                        .filter(Boolean)
-                                        .join(', ')}
-                                    </p>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
-                        )}
-                      </div>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
+          <AISummaryBox
+            summaries={summaries}
+            loading={loading}
+            onRefresh={handleRegenerateSummaries}
+            refreshing={summaryRefreshing}
+            refreshError={summaryRefreshError}
+            refreshMessage={summaryRefreshMessage}
+          />
 
           {/* Quick Stats */}
           <Card>

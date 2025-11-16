@@ -245,6 +245,10 @@ export interface StudentCardProps {
 export interface AISummaryBoxProps {
   summaries: StudentSummary[];
   loading?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void | Promise<void>;
+  refreshError?: string | null;
+  refreshMessage?: string | null;
 }
 
 // Utility types

@@ -24,6 +24,8 @@ export default function ClassPage() {
   const [studentDeleteError, setStudentDeleteError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [classDeleteLoading, setClassDeleteLoading] = useState(false);
+  const [classDeleteError, setClassDeleteError] = useState<string | null>(null);
 
   const fetchClass = useCallback(async () => {
     try {
@@ -85,6 +87,37 @@ export default function ClassPage() {
       }
     } catch (error) {
       console.error('Failed to add student:', error);
+    }
+  };
+
+  const handleDeleteClass = async () => {
+    if (!classData) return;
+    const confirmed = window.confirm(
+      `Supprimer définitivement la classe "${classData.name}" ? Tous les élèves associés seront également supprimés.`
+    );
+
+    if (!confirmed) return;
+
+    setClassDeleteLoading(true);
+    setClassDeleteError(null);
+
+    try {
+      const response = await fetch(`/api/classes/${classId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        router.push('/dashboard?view=classes');
+      } else {
+        setClassDeleteError(data.message || 'Impossible de supprimer cette classe.');
+      }
+    } catch (error) {
+      console.error('Failed to delete class:', error);
+      setClassDeleteError('Une erreur est survenue pendant la suppression de la classe.');
+    } finally {
+      setClassDeleteLoading(false);
     }
   };
 
@@ -205,7 +238,7 @@ export default function ClassPage() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="container mx-auto px-8 py-6">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap justify-between gap-4 items-center">
             <div>
               <button
                 onClick={() => router.push('/dashboard?view=classes')}
@@ -215,19 +248,31 @@ export default function ClassPage() {
               </button>
               <h1 className="text-3xl font-bold text-gray-800">{classData.name}</h1>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-              >
-                📄 Importer des élèves
-              </button>
-              <button
-                onClick={handleAddStudent}
-                className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
-              >
-                + Nouvel élève
-              </button>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-wrap gap-3 justify-end">
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                >
+                  📄 Importer des élèves
+                </button>
+                <button
+                  onClick={handleAddStudent}
+                  className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+                >
+                  + Nouvel élève
+                </button>
+                <button
+                  onClick={handleDeleteClass}
+                  disabled={classDeleteLoading}
+                  className="px-6 py-3 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {classDeleteLoading ? 'Suppression…' : 'Supprimer la classe'}
+                </button>
+              </div>
+              {classDeleteError && (
+                <p className="text-sm text-red-600 text-right">{classDeleteError}</p>
+              )}
             </div>
           </div>
         </div>

@@ -5,7 +5,7 @@ import { getTeacherFromRequest } from '@/lib/auth';
 // GET /api/classes/[classId] - Fetch specific class with students
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ classId: string }> }
+  { params }: { params: { classId: string } }
 ) {
   try {
     const teacher = await getTeacherFromRequest(request);
@@ -16,7 +16,7 @@ export async function GET(
       }), { status: 401 });
     }
 
-    const { classId } = await params;
+    const { classId } = params;
 
     const classData = await prisma.class.findFirst({
       where: {
@@ -74,7 +74,7 @@ export async function GET(
 // PUT /api/classes/[classId] - Update class
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ classId: string }> }
+  { params }: { params: { classId: string } }
 ) {
   try {
     const teacher = await getTeacherFromRequest(request);
@@ -85,7 +85,7 @@ export async function PUT(
       }), { status: 401 });
     }
 
-    const { classId } = await params;
+    const { classId } = params;
 
     const body = await request.json();
     const { name } = body;
@@ -147,7 +147,7 @@ export async function PUT(
 // DELETE /api/classes/[classId] - Delete class
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ classId: string }> }
+  { params }: { params: { classId: string } }
 ) {
   try {
     const teacher = await getTeacherFromRequest(request);
@@ -158,7 +158,7 @@ export async function DELETE(
       }), { status: 401 });
     }
 
-    const { classId } = await params;
+    const { classId } = params;
 
     const result = await prisma.class.deleteMany({
       where: {

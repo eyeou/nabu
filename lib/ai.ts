@@ -201,12 +201,13 @@ export async function generateStudentAnalysisFromLLM(
     messages: [
       {
         role: 'system',
-        content:
-          'Tu es un coach pédagogique francophone. Tu analyses EXCLUSIVEMENT les copies corrigées des élèves (questions, réponses, commentaires du professeur, conseils, sections du programme à revoir) pour déterminer leurs forces, faiblesses et recommandations actionnables. ' +
-          'Tu ignores tout signal qui ne vient pas d\'une évaluation et tu ne fais aucun calcul de notes supplémentaire (la note affichée sur la copie est la seule référence). ' +
-          'Ta réponse DOIT être un seul objet JSON avec exactement les clés "strengths", "weaknesses", "recommendations". ' +
-          'Chaque clé contient un tableau de puces rédigées en français clair, directement liées aux erreurs ou réussites observées dans les copies. ' +
-          'Les recommandations mentionnent explicitement les leçons ou composantes du programme à retravailler quand l\'information est disponible.'
+        content: [
+          'Tu es un coach pédagogique francophone spécialisé dans l’analyse d’évaluations corrigées.',
+          'Tu t’appuies UNIQUEMENT sur les données présentes dans les copies (questions, réponses, annotations du professeur, conseils, axes du programme) et tu ignores tout ce qui n’en provient pas.',
+          'Tu ne recalcules jamais les notes : la note inscrite par l’enseignant est la référence absolue.',
+          'Tu renvoies un unique objet JSON avec exactement les clés "strengths", "weaknesses", "recommendations" (même si les clés sont en anglais, tout le contenu est rédigé en français).',
+          'Chaque clé contient un tableau de puces en français clair, reliées à des constats précis tirés des copies, en citant les notions ou compétences à retravailler quand c’est pertinent.'
+        ].join(' ')
       },
       {
         role: 'user',
@@ -270,34 +271,33 @@ function fallbackAnalysis(student: StudentForAnalysis): StudentAnalysisOutput {
   const recommendations: string[] = [];
 
   if (completed.length > 0) {
+    const lessonLabel = completed.length > 1 ? 'leçons' : 'leçon';
     strengths.push(
-      `Has completed ${completed.length} lesson${completed.length > 1 ? 's' : ''} so far.`,
-      'Shows ability to follow through on assigned learning tasks.'
+      `A déjà terminé ${completed.length} ${lessonLabel}.`,
+      'Montre une bonne capacité à aller au bout des tâches proposées.'
     );
   } else {
-    strengths.push('Shows potential for growth with structured support.');
+    strengths.push('Dispose d’un fort potentiel à condition d’un accompagnement structuré.');
   }
 
   if (notStarted.length > 0) {
     weaknesses.push(
-      `Several lessons (${notStarted.length}) have not been started yet.`,
-      'May need help getting started and clear expectations for upcoming work.'
+      `${notStarted.length} leçon${notStarted.length > 1 ? 's' : ''} n’a pas encore été entamée.`,
+      'Un cadrage supplémentaire aiderait à lancer les prochaines étapes.'
     );
   }
 
   if (inProgress.length > 0) {
+    const focusCount = Math.min(inProgress.length, 3);
     recommendations.push(
-      `Focus upcoming sessions on ${Math.min(
-        inProgress.length,
-        3
-      )} in-progress lesson${inProgress.length > 1 ? 's' : ''}.`,
-      'Schedule short, frequent check-ins to monitor understanding.',
-      'Use visual supports and worked examples to reinforce key concepts.'
+      `Consolider en priorité ${focusCount} leçon${focusCount > 1 ? 's' : ''} actuellement en cours.`,
+      'Programmer de courts bilans réguliers pour valider la compréhension.',
+      'S’appuyer sur des supports visuels ou des exemples guidés.'
     );
   } else {
     recommendations.push(
-      'Assign one or two priority lessons and set a clear completion target.',
-      'Celebrate small wins to build motivation and confidence.'
+      'Définir une à deux leçons prioritaires avec une échéance claire.',
+      'Valoriser chaque progression pour maintenir la motivation.'
     );
   }
 
@@ -314,6 +314,8 @@ export async function analyzeAndGradeExamImage(params: {
     'You are an expert educator reading graded exam copies. Each photo already contains the student name and the grade written by the teacher. ' +
     'Transcribe the student name EXACTLY as written (keep accents, uppercase, hyphens). ' +
     'Transcribe the grade text EXACTLY as written ("16/20", "B+", "18,5 sur 20", etc.). Never invent or recompute a grade. ' +
+    'Ignore partial scores or per-question annotations when they are not the final grade: never average or total anything yourself. ' +
+    'If several notes appear, select the final teacher grade (usually expressed as "xx/20"). ' +
     'Only if the grade text clearly contains numbers, set "overallScore" and "maxScore" accordingly; otherwise set them to null. ' +
     'Extract the teacher comments, the student answers, and generate actionable improvement advice referencing concrete skills or sections of the program. ' +
     'Output a SINGLE JSON object with the following shape:\n' +

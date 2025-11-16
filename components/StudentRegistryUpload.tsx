@@ -129,21 +129,28 @@ export default function StudentRegistryUpload({
     setIsExtracting(true);
     setError('');
 
+    const csvFiles = files.filter(file => file.type === 'text/csv' || file.name.endsWith('.csv'));
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+
     try {
-      // Check if any file is CSV
-      const csvFile = files.find(f => f.type === 'text/csv' || f.name.endsWith('.csv'));
-      
-      if (csvFile) {
-        // Handle CSV directly
-        const students = await parseCSV(csvFile);
-        setExtractedStudents(students);
-        setShowPreview(true);
-      } else {
-        // Handle images with AI extraction
-        const imageUrls = await convertFilesToDataUrls(files);
+      const extracted: ExtractedStudent[] = [];
+
+      if (csvFiles.length > 0) {
+        for (const csvFile of csvFiles) {
+          const studentsFromCsv = await parseCSV(csvFile);
+          extracted.push(...studentsFromCsv);
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        const imageUrls = await convertFilesToDataUrls(imageFiles);
+        if (imageUrls.length === 0) {
+          throw new Error('No valid images to process. Please re-upload your files.');
+        }
 
         const response = await fetch('/api/students/extract', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json'
           },
@@ -152,13 +159,20 @@ export default function StudentRegistryUpload({
 
         const data = await response.json();
 
-        if (data.success) {
-          setExtractedStudents(data.data.students);
-          setShowPreview(true);
-        } else {
-          setError(data.message || 'Failed to extract students');
+        if (!data.success || !Array.isArray(data.data?.students)) {
+          throw new Error(data.message || 'Failed to extract students from images');
         }
+
+        extracted.push(...data.data.students);
       }
+
+      if (extracted.length === 0) {
+        setError('No students detected. Try clearer images or a CSV file with names.');
+        return;
+      }
+
+      setExtractedStudents(extracted);
+      setShowPreview(true);
     } catch (err) {
       console.error('Extract error:', err);
       setError(err instanceof Error ? err.message : 'Failed to extract students from registry');

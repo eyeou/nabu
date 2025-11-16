@@ -60,6 +60,7 @@ Ce document donne une vue d’ensemble du produit, de ses objectifs pédagogique
 
 - Ne pas appeler `/api/summaries/generate` manuellement : c’est la fonction finale du pipeline d’upload.  
 - Les prompts LLM sont conçus pour produire du français strict et mentionner uniquement les erreurs observées dans les copies (pas de recalcul de notes). Modifier les messages avec précaution.  
+- Lors d’un upload, toutes les pages détectées avec le même nom d’élève sont fusionnées pour un unique examen lié à la leçon : la note (sur 20) affichée correspond exactement à celle écrite par le professeur, jamais à un calcul automatique par copie.  
 - Le champ `gradedResponses` est directement affiché dans les cartes “Examens récents”/modal classe. Il doit conserver la structure `{ gradeText, adviceSummary[], programRecommendations[], questions[] }` renvoyée par `analyzeAndGradeExamImage`.
 
 À compléter si vous ajoutez : 

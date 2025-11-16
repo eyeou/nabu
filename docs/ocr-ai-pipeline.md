@@ -9,7 +9,7 @@ This document explains how exam photos become structured data and actionable AI 
    * OCR the content,
    * Transcribe the exact student name + grade text written on the copy,
    * Capture teacher comments per question,
-   * Produce targeted advice / program sections to review (without recomputing a score).
+   * Produce targeted advice / program sections to review (without recomputing a score — the grade is always extracted verbatim from the teacher’s annotation, never recalculated per page).
 3. We store each exam (`Assessment`) and the **student’s graded attempt** (`StudentAssessment`) in Postgres (Supabase) via Prisma.
 4. We update the student’s `StudentLessonStatus` and regenerate the AI summary (strengths/weaknesses/recommendations) using the same analyzed data.
 
@@ -38,8 +38,8 @@ Each `StudentAssessment.gradedResponses` stores the JSON returned by the multimo
 ## Upload flow (detailed)
 
 1. **UI**: Teacher selects the class, picks one lesson, drags every scanned page, and clicks *Upload & analyze*. Payload = `{ lessonId, classId, imageDataUrls[] }`.
-2. **API (per page)**: `/api/exams/upload` validates auth, lesson ownership, and the image payload. Each image is sent to `analyzeAndGradeExamImage` (vision-enabled Blackbox request) which returns the detected student name, the exact grade text, advice arrays, and per-question notes.
-3. **Grouping**: Pages are bucketed by normalized student name. `mergeExamAnalyses` concatenates the questions, merges advice/program recommendations, and joins the OCR trace.
+2. **API (per page)**: `/api/exams/upload` valide l’authentification/lesson, puis envoie toutes les images en parallèle (concurrence configurable via `EXAM_OCR_CONCURRENCY`, 3 par défaut) vers `analyzeAndGradeExamImage`. Chaque réponse contient le nom détecté, la note relevée, les conseils et les retours par question. La note est strictement extraite depuis l’annotation du professeur (souvent sur 20) : aucune moyenne ni recalcul par copie n’est effectué.
+3. **Grouping**: Pages are bucketed by normalized student name so that all documents detected for the same student/lesson are merged into a single exam attempt. `mergeExamAnalyses` concatène les questions, fusionne les conseils/recommandations et assemble la trace OCR.
 4. **Student resolution**: We attempt to match the detected name (case-insensitive) against existing students owned by the teacher. If no match is found we create a new student in the selected class.
 5. **Persistence**:
    * `Assessment` stores lesson linkage, the concatenated `sourceImageUrl`, and the extracted metadata (grade text, advice arrays, per-question data).
@@ -56,6 +56,7 @@ Each `StudentAssessment.gradedResponses` stores the JSON returned by the multimo
 ## Environment variables
 
 * `BLACKBOX_API_KEY`, `BLACKBOX_API_BASE_URL`, `BLACKBOX_TEXT_MODEL`, `BLACKBOX_VISION_MODEL`: configure the Blackbox/OpenAI-compatible client.  
+* `EXAM_OCR_CONCURRENCY`: nombre maximum de copies analysées simultanément (par défaut 3).  
 * `PRISMA_DEBUG`: when `true`, Prisma logs queries in addition to warn/error.
 
 ## Testing

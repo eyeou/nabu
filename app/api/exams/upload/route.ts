@@ -185,6 +185,7 @@ export async function POST(request: NextRequest) {
 
     for (const [, group] of analysesByStudent.entries()) {
       const mergedAnalysis = mergeExamAnalyses(group.analyses);
+      const extractedScore = extractScoresFromGradeText(mergedAnalysis.gradeText);
 
       let resolvedStudent: Awaited<ReturnType<typeof resolveStudent>>;
       try {
@@ -243,8 +244,8 @@ export async function POST(request: NextRequest) {
           assessmentId: assessment.id,
           studentId: student.id,
           detectedStudentName: mergedAnalysis.detectedStudentName,
-          overallScore: mergedAnalysis.overallScore ?? null,
-          maxScore: mergedAnalysis.maxScore ?? null,
+          overallScore: extractedScore?.totalScore ?? null,
+          maxScore: extractedScore?.maxScore ?? null,
           gradedResponses: gradedResponsesPayload
         }
       });
@@ -253,7 +254,8 @@ export async function POST(request: NextRequest) {
       await upsertStudentLessonStatus({
         studentId: student.id,
         lessonId: lesson.id,
-        examAnalysis: mergedAnalysis
+        examAnalysis: mergedAnalysis,
+        extractedScore
       });
 
       console.info('🧾 Regenerating AI summary for student...');
@@ -379,23 +381,16 @@ async function upsertStudentLessonStatus(params: {
   studentId: string;
   lessonId: string;
   examAnalysis: Awaited<ReturnType<typeof analyzeAndGradeExamImage>>;
+  extractedScore?: { totalScore: number; maxScore: number } | null;
 }) {
-  const { studentId, lessonId, examAnalysis } = params;
+  const { studentId, lessonId, examAnalysis, extractedScore } = params;
 
-  const llmScore =
-    typeof examAnalysis.overallScore === 'number' && typeof examAnalysis.maxScore === 'number'
-      ? {
-          totalScore: examAnalysis.overallScore,
-          maxScore: examAnalysis.maxScore
-        }
-      : null;
-
-  const extractedScore = llmScore ?? extractScoresFromGradeText(examAnalysis.gradeText);
+  const gradeScore = extractedScore ?? extractScoresFromGradeText(examAnalysis.gradeText);
 
   const totalScore =
-    extractedScore && extractedScore.maxScore > 0 ? extractedScore.totalScore : undefined;
+    gradeScore && gradeScore.maxScore > 0 ? gradeScore.totalScore : undefined;
   const maxScore =
-    extractedScore && extractedScore.maxScore > 0 ? extractedScore.maxScore : undefined;
+    gradeScore && gradeScore.maxScore > 0 ? gradeScore.maxScore : undefined;
 
   const percent =
     typeof totalScore === 'number' && typeof maxScore === 'number' && maxScore > 0
@@ -602,7 +597,7 @@ function mergeExamAnalyses(analyses: ExamAnalysisResult[]): ExamAnalysisResult {
   const declaredOverallScore = analyses.find(a => typeof a.overallScore === 'number')?.overallScore;
   const declaredMaxScore = analyses.find(a => typeof a.maxScore === 'number')?.maxScore;
   const detectedName = analyses.find(a => a.detectedStudentName)?.detectedStudentName;
-  const gradeText = analyses.find(a => a.gradeText)?.gradeText;
+  const gradeText = pickBestGradeText(analyses.map(a => a.gradeText));
   const combinedAdvice = Array.from(
     new Set(
       analyses
@@ -632,6 +627,57 @@ function mergeExamAnalyses(analyses: ExamAnalysisResult[]): ExamAnalysisResult {
     programRecommendations: combinedProgramRecommendations,
     questions: mergedQuestions
   };
+}
+
+function pickBestGradeText(gradeTexts: Array<string | undefined>): string | undefined {
+  const cleaned = gradeTexts
+    .map(text => text?.trim())
+    .filter((text): text is string => Boolean(text));
+
+  if (cleaned.length === 0) {
+    return undefined;
+  }
+
+  let bestText = cleaned[0];
+  let bestScore = scoreGradeCandidate(bestText);
+
+  for (let index = 1; index < cleaned.length; index += 1) {
+    const candidate = cleaned[index];
+    const candidateScore = scoreGradeCandidate(candidate);
+    if (candidateScore > bestScore) {
+      bestText = candidate;
+      bestScore = candidateScore;
+    }
+  }
+
+  return bestText;
+}
+
+function scoreGradeCandidate(text: string): number {
+  const normalized = text.toLowerCase();
+  let score = 0;
+
+  if (/(?:\/|\bsur\b)\s*20\b/.test(normalized)) {
+    score += 4;
+  }
+
+  if (/(?:\/|\bsur\b)\s*\d+/.test(normalized)) {
+    score += 2;
+  }
+
+  if (/\d+\s*%/.test(normalized)) {
+    score += 1.5;
+  }
+
+  if (/\bnote\b/.test(normalized) || /\btotal\b/.test(normalized)) {
+    score += 1;
+  }
+
+  if (/[0-9]/.test(normalized)) {
+    score += 0.5;
+  }
+
+  return score;
 }
 
 async function processInParallel<T, R>(
