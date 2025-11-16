@@ -6,6 +6,7 @@ import { Class, Student } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
+import StudentRegistryUpload, { ExtractedStudent } from '@/components/StudentRegistryUpload';
 import { parseCopyInsights } from '@/lib/copy-insights';
 
 export default function ClassPage() {
@@ -21,6 +22,8 @@ export default function ClassPage() {
   const [studentDetailLoading, setStudentDetailLoading] = useState(false);
   const [studentDeleteLoading, setStudentDeleteLoading] = useState(false);
   const [studentDeleteError, setStudentDeleteError] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const fetchClass = useCallback(async () => {
     try {
@@ -90,7 +93,34 @@ export default function ClassPage() {
     fetchStudentDetails(student.id);
   };
 
-  const handleDeleteStudent = async () => {
+  const handleDeleteStudentFromList = async (studentId: string, studentName: string) => {
+    const confirmed = window.confirm(
+      `Supprimer définitivement ${studentName} ? Toutes ses données seront effacées.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/students/${studentId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await response.json();
+      if (data.success) {
+        setStudents(prev => prev.filter(s => s.id !== studentId));
+        if (selectedStudent?.id === studentId) {
+          setSelectedStudent(null);
+          setSelectedStudentDetails(null);
+        }
+      } else {
+        alert(data.message || 'Impossible de supprimer cet élève.');
+      }
+    } catch (error) {
+      console.error('Failed to delete student:', error);
+      alert('Une erreur est survenue pendant la suppression.');
+    }
+  };
+
+  const handleDeleteSelectedStudent = async () => {
     if (!selectedStudent) return;
     const confirmed = window.confirm(
       `Supprimer définitivement ${selectedStudent.name} ? Toutes ses données seront effacées.`
@@ -117,6 +147,40 @@ export default function ClassPage() {
       setStudentDeleteError('Une erreur est survenue pendant la suppression.');
     } finally {
       setStudentDeleteLoading(false);
+    }
+  };
+
+  const handleStudentsExtracted = async (extractedStudents: ExtractedStudent[]) => {
+    if (extractedStudents.length === 0) {
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const response = await fetch('/api/students/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          classId,
+          students: extractedStudents
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        await fetchClass();
+        setShowImportModal(false);
+      } else {
+        alert(data.message || "Impossible d'importer les élèves.");
+      }
+    } catch (error) {
+      console.error('Failed to import students:', error);
+      alert("Une erreur est survenue pendant l'import.");
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -151,12 +215,20 @@ export default function ClassPage() {
               </button>
               <h1 className="text-3xl font-bold text-gray-800">{classData.name}</h1>
             </div>
-            <button
-              onClick={handleAddStudent}
-              className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
-            >
-              + Nouvel élève
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+              >
+                📄 Importer des élèves
+              </button>
+              <button
+                onClick={handleAddStudent}
+                className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+              >
+                + Nouvel élève
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -175,19 +247,28 @@ export default function ClassPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-8">
-            {students.map((student) => (
-              <button
-                key={student.id}
-                onClick={() => handleStudentClick(student)}
-                className="flex flex-col items-center group"
-              >
-                <div className="w-24 h-24 rounded-full bg-green-400 hover:bg-green-500 transition-all duration-300 group-hover:scale-110 shadow-lg flex items-center justify-center text-white font-bold text-lg">
+            {students.map(student => (
+              <div key={student.id} className="flex flex-col items-center group relative">
+                <button
+                  onClick={() => handleStudentClick(student)}
+                  className="w-24 h-24 rounded-full bg-green-400 hover:bg-green-500 transition-all duration-300 group-hover:scale-110 shadow-lg flex items-center justify-center text-white font-bold text-lg relative"
+                >
                   {student.name.charAt(0).toUpperCase()}
-                </div>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteStudentFromList(student.id, student.name);
+                  }}
+                  className="absolute top-0 right-0 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                  title={`Supprimer ${student.name}`}
+                >
+                  ×
+                </button>
                 <div className="mt-3 text-sm text-gray-700 text-center font-medium">
                   {student.name}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -235,7 +316,7 @@ export default function ClassPage() {
                   Ouvrir la fiche complète →
                 </Link>
                 <button
-                  onClick={handleDeleteStudent}
+                  onClick={handleDeleteSelectedStudent}
                   disabled={studentDeleteLoading}
                   className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-1 hover:bg-red-50 disabled:opacity-50"
                 >
@@ -388,6 +469,34 @@ export default function ClassPage() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Students Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 sm:p-8 z-50">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800">Importer des élèves</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Téléchargez une photo ou un CSV de votre registre pour créer plusieurs élèves automatiquement.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                disabled={isImporting}
+              >
+                ×
+              </button>
+            </div>
+
+            <StudentRegistryUpload
+              onStudentsExtracted={handleStudentsExtracted}
+              onCancel={() => setShowImportModal(false)}
+            />
           </div>
         </div>
       )}
