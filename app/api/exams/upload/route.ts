@@ -98,22 +98,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const ocrConcurrency = Math.max(
+      1,
+      Math.min(
+        imageSources.length,
+        Number.isNaN(Number(process.env.EXAM_OCR_CONCURRENCY))
+          ? 3
+          : Number(process.env.EXAM_OCR_CONCURRENCY ?? 3)
+      )
+    );
+
+    const ocrResults = await processInParallel(
+      imageSources,
+      ocrConcurrency,
+      async (source, index) => {
+        console.info(`🧠 Sending exam image page ${index + 1}/${imageSources.length} to AI...`);
+        const analysis = await analyzeAndGradeExamImage({
+          imageUrl: source,
+          lessonTitle: lesson.title
+        });
+        return { source, analysis, pageIndex: index };
+      }
+    );
+
     const analysesByStudent = new Map<
       string,
       { displayName: string; analyses: ExamAnalysisResult[]; imageSources: string[] }
     >();
     const namelessPages: number[] = [];
 
-    for (const [index, source] of imageSources.entries()) {
-      console.info(`🧠 Sending exam image page ${index + 1}/${imageSources.length} to AI...`);
-      const result = await analyzeAndGradeExamImage({
-        imageUrl: source,
-        lessonTitle: lesson.title
-      });
-
+    for (const { source, analysis: result, pageIndex } of ocrResults) {
       const detectedName = result.detectedStudentName?.trim();
       if (!detectedName) {
-        namelessPages.push(index + 1);
+        namelessPages.push(pageIndex + 1);
         continue;
       }
 
@@ -615,5 +632,34 @@ function mergeExamAnalyses(analyses: ExamAnalysisResult[]): ExamAnalysisResult {
     programRecommendations: combinedProgramRecommendations,
     questions: mergedQuestions
   };
+}
+
+async function processInParallel<T, R>(
+  items: T[],
+  concurrency: number,
+  handler: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (true) {
+      const currentIndex = cursor++;
+      if (currentIndex >= items.length) break;
+      results[currentIndex] = await handler(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker()
+  );
+
+  await Promise.all(workers);
+  return results;
 }
 
