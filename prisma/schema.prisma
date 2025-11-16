@@ -16,7 +16,6 @@ model Teacher {
   updatedAt    DateTime  @updatedAt
   classes      Class[]
   programs     Program[]
-  comments     StudentComment[]
 
   @@map("teachers")
 }
@@ -88,7 +87,6 @@ model Student {
   studentAssessments StudentAssessment[]
   lessonStatuses     StudentLessonStatus[]
   summaries          StudentSummary[]
-  comments           StudentComment[]
   class              Class                 @relation(fields: [classId], references: [id], onDelete: Cascade)
 
   @@map("students")
@@ -122,21 +120,6 @@ model StudentSummary {
 
   @@unique([studentId, subject])
   @@map("student_summaries")
-}
-
-model StudentComment {
-  id        String   @id @default(cuid())
-  studentId String
-  teacherId String
-  content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-
-  @@index([studentId], map: "student_comments_student_idx")
-  @@map("student_comments")
 }
 
 model Assessment {

@@ -19,10 +19,14 @@ export default function ClassPage() {
   const [selectedStudentDetails, setSelectedStudentDetails] = useState<Student | null>(null);
   const [loading, setLoading] = useState(true);
   const [studentDetailLoading, setStudentDetailLoading] = useState(false);
+  const [studentDeleteLoading, setStudentDeleteLoading] = useState(false);
+  const [studentDeleteError, setStudentDeleteError] = useState<string | null>(null);
 
   const fetchClass = useCallback(async () => {
     try {
-      const response = await fetch(`/api/classes/${classId}`);
+      const response = await fetch(`/api/classes/${classId}`, {
+        credentials: 'include'
+      });
       const data = await response.json();
 
       if (data.success) {
@@ -43,7 +47,9 @@ export default function ClassPage() {
   const fetchStudentDetails = useCallback(async (studentId: string) => {
     setStudentDetailLoading(true);
     try {
-      const response = await fetch(`/api/students/${studentId}`);
+      const response = await fetch(`/api/students/${studentId}`, {
+        credentials: 'include'
+      });
       const data = await response.json();
       if (data.success) {
         setSelectedStudentDetails(data.data);
@@ -82,6 +88,36 @@ export default function ClassPage() {
   const handleStudentClick = (student: Student) => {
     setSelectedStudent(student);
     fetchStudentDetails(student.id);
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!selectedStudent) return;
+    const confirmed = window.confirm(
+      `Supprimer définitivement ${selectedStudent.name} ? Toutes ses données seront effacées.`
+    );
+    if (!confirmed) return;
+
+    setStudentDeleteLoading(true);
+    setStudentDeleteError(null);
+    try {
+      const response = await fetch(`/api/students/${selectedStudent.id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await response.json();
+      if (data.success) {
+        setStudents(prev => prev.filter(s => s.id !== selectedStudent.id));
+        setSelectedStudent(null);
+        setSelectedStudentDetails(null);
+      } else {
+        setStudentDeleteError(data.message || 'Impossible de supprimer cet élève.');
+      }
+    } catch (error) {
+      console.error('Failed to delete student:', error);
+      setStudentDeleteError('Une erreur est survenue pendant la suppression.');
+    } finally {
+      setStudentDeleteLoading(false);
+    }
   };
 
   if (loading) {
@@ -185,19 +221,31 @@ export default function ClassPage() {
               </button>
             </div>
 
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-gray-500">
                 {studentDetailLoading
                   ? 'Chargement des données pédagogiques…'
                   : 'Dernières analyses IA pour cet élève.'}
               </div>
-              <Link
-                href={`/students/${selectedStudent.id}`}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-              >
-                Ouvrir la fiche complète →
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/students/${selectedStudent.id}`}
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                >
+                  Ouvrir la fiche complète →
+                </Link>
+                <button
+                  onClick={handleDeleteStudent}
+                  disabled={studentDeleteLoading}
+                  className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-1 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {studentDeleteLoading ? 'Suppression…' : 'Supprimer l’élève'}
+                </button>
+              </div>
             </div>
+            {studentDeleteError && (
+              <p className="text-sm text-red-600">{studentDeleteError}</p>
+            )}
 
             <div className="grid gap-4">
               <Card>

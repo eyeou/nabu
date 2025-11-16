@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ const masteryLabelMap: Record<string, string> = {
 
 export default function StudentProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const studentId = params.studentId as string;
 
   const [student, setStudent] = useState<Student | null>(null);
@@ -41,10 +42,15 @@ export default function StudentProfilePage() {
   const [newComment, setNewComment] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const fetchStudent = useCallback(async () => {
     try {
-      const response = await fetch(`/api/students/${studentId}`);
+      const response = await fetch(`/api/students/${studentId}`, {
+        credentials: 'include'
+      });
       const data = await response.json();
 
       if (data.success) {
@@ -60,9 +66,20 @@ export default function StudentProfilePage() {
         
         // For now, we'll use empty links - in a real app, you'd fetch these
         setLinks([]);
+        setLoadError(null);
+      } else {
+        setStudent(null);
+        setSummaries([]);
+        setLessonStatuses([]);
+        setLessons([]);
+        setLinks([]);
+        setStudentAssessments([]);
+        setStudentComments([]);
+        setLoadError(data.message || 'Impossible de charger les informations de l’élève.');
       }
     } catch (error) {
       console.error('Failed to fetch student:', error);
+      setLoadError('Impossible de charger les informations de l’élève. Vérifiez votre connexion et vos droits.');
     } finally {
       setLoading(false);
     }
@@ -116,6 +133,7 @@ export default function StudentProfilePage() {
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ content: newComment.trim() })
       });
       const data = await response.json();
@@ -130,6 +148,34 @@ export default function StudentProfilePage() {
       setCommentError('Impossible d’enregistrer le commentaire.');
     } finally {
       setCommentSubmitting(false);
+    }
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!student) return;
+    const confirmed = window.confirm(
+      'Supprimer définitivement cet élève ? Toutes les copies, commentaires et statuts associés seront supprimés.'
+    );
+    if (!confirmed) return;
+
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    try {
+      const response = await fetch(`/api/students/${studentId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const data = await response.json();
+      if (data.success) {
+        router.push('/classes');
+      } else {
+        setDeleteError(data.message || 'Impossible de supprimer cet élève.');
+      }
+    } catch (error) {
+      console.error('Failed to delete student:', error);
+      setDeleteError('Une erreur est survenue pendant la suppression.');
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -152,9 +198,14 @@ export default function StudentProfilePage() {
   if (!student) {
     return (
       <div className="container mx-auto px-6 py-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Élève introuvable</h1>
-          <p className="text-gray-600">Impossible de trouver l’élève demandé.</p>
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold text-red-600">Élève introuvable</h1>
+          <p className="text-gray-600">
+            {loadError || 'Impossible de trouver l’élève demandé.'}
+          </p>
+          <Button variant="outline" onClick={fetchStudent}>
+            Réessayer
+          </Button>
         </div>
       </div>
     );
@@ -537,9 +588,19 @@ export default function StudentProfilePage() {
               <Button variant="outline" className="w-full">
                 Voir le rapport complet
               </Button>
-              <Button variant="outline" className="w-full text-red-600 border-red-200 hover:bg-red-50">
-                Retirer de la classe
-              </Button>
+              <div className="space-y-2">
+                {deleteError && (
+                  <p className="text-sm text-red-600">{deleteError}</p>
+                )}
+                <Button
+                  variant="outline"
+                  className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={handleDeleteStudent}
+                  disabled={deleteSubmitting}
+                >
+                  {deleteSubmitting ? 'Suppression…' : 'Supprimer cet élève'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
