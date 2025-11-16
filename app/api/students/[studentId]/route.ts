@@ -2,12 +2,15 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getTeacherFromRequest } from '@/lib/auth';
 
+type StudentRouteParams = Promise<{ studentId: string }>;
+
 // GET /api/students/[studentId] - Fetch specific student with progress
 export async function GET(
   request: NextRequest,
-  { params }: { params: { studentId: string } }
+  context: { params: StudentRouteParams }
 ) {
   try {
+    const { studentId } = await context.params;
     const teacher = await getTeacherFromRequest(request);
     if (!teacher) {
       return new Response(JSON.stringify({
@@ -17,7 +20,7 @@ export async function GET(
     }
 
     const student = await prisma.student.findFirst({
-      where: { id: params.studentId },
+      where: { id: studentId },
       include: {
         class: {
           select: {
@@ -29,6 +32,19 @@ export async function GET(
         summaries: {
           orderBy: {
             updatedAt: 'desc'
+          }
+        },
+        comments: {
+          include: {
+            teacher: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
           }
         },
         lessonStatuses: {
@@ -92,9 +108,10 @@ export async function GET(
 // PUT /api/students/[studentId] - Update student
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { studentId: string } }
+  context: { params: StudentRouteParams }
 ) {
   try {
+    const { studentId } = await context.params;
     const teacher = await getTeacherFromRequest(request);
     if (!teacher) {
       return new Response(JSON.stringify({
@@ -115,7 +132,7 @@ export async function PUT(
 
     // Verify student exists and teacher has access
     const student = await prisma.student.findFirst({
-      where: { id: params.studentId },
+      where: { id: studentId },
       include: {
         class: {
           select: { teacherId: true }
@@ -131,7 +148,7 @@ export async function PUT(
     }
 
     const updatedStudent = await prisma.student.update({
-      where: { id: params.studentId },
+      where: { id: studentId },
       data: {
         name: name.trim(),
         age: age || null,
@@ -157,9 +174,10 @@ export async function PUT(
 // DELETE /api/students/[studentId] - Delete student
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { studentId: string } }
+  context: { params: StudentRouteParams }
 ) {
   try {
+    const { studentId } = await context.params;
     const teacher = await getTeacherFromRequest(request);
     if (!teacher) {
       return new Response(JSON.stringify({
@@ -170,7 +188,7 @@ export async function DELETE(
 
     // Verify student exists and teacher has access
     const student = await prisma.student.findFirst({
-      where: { id: params.studentId },
+      where: { id: studentId },
       include: {
         class: {
           select: { teacherId: true }
@@ -186,7 +204,7 @@ export async function DELETE(
     }
 
     await prisma.student.delete({
-      where: { id: params.studentId }
+      where: { id: studentId }
     });
 
     return new Response(JSON.stringify({

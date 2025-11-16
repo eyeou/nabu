@@ -42,13 +42,13 @@ export default function ProgramGraph({
     return (
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Program Graph</CardTitle>
+          <CardTitle>Graphe du programme</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center py-12">
           <div className="text-center">
-            <p className="text-gray-500 mb-4">No lessons created yet</p>
+            <p className="text-gray-500 mb-4">Aucune leçon créée pour l’instant</p>
             <p className="text-sm text-gray-400">
-              Start building your program by adding lessons
+              Commencez à construire votre programme en ajoutant des leçons
             </p>
           </div>
         </CardContent>
@@ -59,9 +59,9 @@ export default function ProgramGraph({
   return (
     <Card className="w-full">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Program Graph</CardTitle>
+        <CardTitle>Graphe du programme</CardTitle>
         <Button variant="outline" size="sm">
-          Add Connection
+          Ajouter un lien
         </Button>
       </CardHeader>
       
@@ -88,23 +88,23 @@ export default function ProgramGraph({
 
         {/* Graph Legend */}
         <div className="mt-6 pt-4 border-t border-gray-200">
-          <p className="text-sm font-medium text-gray-700 mb-3">Status Legend:</p>
+          <p className="text-sm font-medium text-gray-700 mb-3">Légende des statuts :</p>
           <div className="flex flex-wrap gap-4 text-xs">
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded-full bg-gray-300"></div>
-              <span>Not Started</span>
+              <span>Non commencé</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
-              <span>In Progress</span>
+              <span>En cours</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded-full bg-green-500"></div>
-              <span>Completed</span>
+              <span>Terminé</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded-full bg-purple-500"></div>
-              <span>Mastered</span>
+              <span>Maîtrisé</span>
             </div>
           </div>
         </div>
@@ -112,8 +112,8 @@ export default function ProgramGraph({
         {/* Instructions */}
         <div className="mt-4 p-3 bg-blue-50 rounded-lg">
           <p className="text-sm text-blue-700">
-            Click on any lesson node to edit its content, description, and test data.
-            Use the &quot;Add Connection&quot; button to link lessons and show learning prerequisites.
+            Cliquez sur un nœud pour modifier son contenu, sa description ou ses évaluations.
+            Utilisez « Ajouter un lien » pour représenter les prérequis entre les leçons.
           </p>
         </div>
       </CardContent>

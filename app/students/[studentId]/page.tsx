@@ -6,32 +6,25 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
 import AISummaryBox from '@/components/AISummaryBox';
 import ProgramGraph from '@/components/ProgramGraph';
+import { parseCopyInsights } from '@/lib/copy-insights';
 import {
   Student,
   StudentLessonStatus,
   StudentSummary,
   Lesson,
   LessonLink,
-  StudentAssessment
+  StudentAssessment,
+  StudentComment
 } from '@/types';
 
-type StoredQuestion = {
-  number?: number;
-  questionText?: string;
-  studentAnswer?: string;
-  correctAnswer?: string;
-  pointsAwarded?: number;
-  pointsPossible?: number;
-  feedback?: string;
-};
-
-const getQuestionPreview = (responses: unknown): StoredQuestion[] => {
-  if (!Array.isArray(responses)) {
-    return [];
-  }
-  return (responses as StoredQuestion[]).slice(0, 3);
+const masteryLabelMap: Record<string, string> = {
+  not_started: 'Non commencé',
+  in_progress: 'En cours',
+  completed: 'Terminé',
+  mastered: 'Maîtrisé'
 };
 
 export default function StudentProfilePage() {
@@ -44,6 +37,10 @@ export default function StudentProfilePage() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [links, setLinks] = useState<LessonLink[]>([]);
   const [studentAssessments, setStudentAssessments] = useState<StudentAssessment[]>([]);
+  const [studentComments, setStudentComments] = useState<StudentComment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const fetchStudent = useCallback(async () => {
     try {
@@ -59,6 +56,7 @@ export default function StudentProfilePage() {
         const uniqueLessons = data.data.lessonStatuses?.map((status: StudentLessonStatus) => status.lesson).filter(Boolean) || [];
         setLessons(uniqueLessons);
         setStudentAssessments(data.data.studentAssessments || []);
+        setStudentComments(data.data.comments || []);
         
         // For now, we'll use empty links - in a real app, you'd fetch these
         setLinks([]);
@@ -99,6 +97,42 @@ export default function StudentProfilePage() {
     return distribution;
   };
 
+  const formatMasteryLabel = (mastery: string) => {
+    return masteryLabelMap[mastery] || mastery;
+  };
+
+  const handleSubmitComment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newComment.trim()) {
+      setCommentError('Ajoutez un commentaire avant de valider.');
+      return;
+    }
+
+    setCommentSubmitting(true);
+    setCommentError(null);
+    try {
+      const response = await fetch(`/api/students/${studentId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: newComment.trim() })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setStudentComments(prev => [data.data as StudentComment, ...prev]);
+        setNewComment('');
+      } else {
+        setCommentError(data.message || 'Impossible d’enregistrer le commentaire.');
+      }
+    } catch (error) {
+      console.error('Failed to add comment:', error);
+      setCommentError('Impossible d’enregistrer le commentaire.');
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-6 py-8">
@@ -119,8 +153,8 @@ export default function StudentProfilePage() {
     return (
       <div className="container mx-auto px-6 py-8">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Student Not Found</h1>
-          <p className="text-gray-600">The requested student could not be found.</p>
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Élève introuvable</h1>
+          <p className="text-gray-600">Impossible de trouver l’élève demandé.</p>
         </div>
       </div>
     );
@@ -138,7 +172,7 @@ export default function StudentProfilePage() {
             {student.avatarUrl ? (
               <img 
                 src={student.avatarUrl} 
-                alt={`${student.name}'s avatar`}
+                alt={`Avatar de ${student.name}`}
                 className="w-20 h-20 rounded-full object-cover border-4 border-blue-200"
               />
             ) : (
@@ -156,11 +190,11 @@ export default function StudentProfilePage() {
             <h1 className="text-3xl font-bold text-gray-900">{student.name}</h1>
             <div className="flex items-center space-x-4 mt-2">
               {student.age && (
-                <Badge variant="secondary">Age {student.age}</Badge>
+                <Badge variant="secondary">Âge {student.age}</Badge>
               )}
-              <Badge variant="outline">{student.class?.name || 'Unknown Class'}</Badge>
+              <Badge variant="outline">{student.class?.name || 'Classe inconnue'}</Badge>
               <span className="text-gray-500 text-sm">
-                ID: {student.id.slice(-8)}
+                ID : {student.id.slice(-8)}
               </span>
             </div>
           </div>
@@ -170,7 +204,7 @@ export default function StudentProfilePage() {
           disabled
           className="bg-gray-200 text-gray-500 cursor-not-allowed"
         >
-          AI analysis is generated after test upload
+          L’analyse IA apparaît après l’import d’une copie
         </Button>
       </div>
 
@@ -180,14 +214,14 @@ export default function StudentProfilePage() {
           {/* Progress Overview */}
           <Card>
             <CardHeader>
-              <CardTitle>Learning Progress Overview</CardTitle>
+              <CardTitle>Vue d’ensemble des progrès</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
                 {/* Overall Progress */}
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="font-medium">Overall Progress</span>
+                    <span className="font-medium">Progression globale</span>
                     <span className="text-sm text-gray-600">{getOverallProgress()}%</span>
                   </div>
                   <Progress value={getOverallProgress()} className="h-3" />
@@ -197,19 +231,19 @@ export default function StudentProfilePage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-gray-400">{masteryDistribution.not_started}</div>
-                    <div className="text-sm text-gray-600">Not Started</div>
+                    <div className="text-sm text-gray-600">Non commencé</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-yellow-500">{masteryDistribution.in_progress}</div>
-                    <div className="text-sm text-gray-600">In Progress</div>
+                    <div className="text-sm text-gray-600">En cours</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-500">{masteryDistribution.completed}</div>
-                    <div className="text-sm text-gray-600">Completed</div>
+                    <div className="text-sm text-gray-600">Terminé</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-purple-500">{masteryDistribution.mastered}</div>
-                    <div className="text-sm text-gray-600">Mastered</div>
+                    <div className="text-sm text-gray-600">Maîtrisé</div>
                   </div>
                 </div>
               </div>
@@ -218,7 +252,7 @@ export default function StudentProfilePage() {
 
           {/* Program Graph with Student Progress */}
           <div>
-            <h2 className="text-xl font-semibold mb-4">Learning Path Progress</h2>
+            <h2 className="text-xl font-semibold mb-4">Parcours d’apprentissage</h2>
             {lessons.length > 0 ? (
               <ProgramGraph
                 lessons={lessons}
@@ -230,9 +264,9 @@ export default function StudentProfilePage() {
               <Card>
                 <CardContent className="text-center py-12">
                   <div className="text-4xl mb-4">📚</div>
-                  <h3 className="text-lg font-medium text-gray-700 mb-2">No Learning Path Assigned</h3>
+                  <h3 className="text-lg font-medium text-gray-700 mb-2">Aucun parcours attribué</h3>
                   <p className="text-gray-500">
-                    This student hasn&apos;t been assigned to any lessons yet.
+                    Cet élève n’a pas encore de leçons assignées.
                   </p>
                 </CardContent>
               </Card>
@@ -242,7 +276,7 @@ export default function StudentProfilePage() {
           {/* Recent Activity */}
           <Card>
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
+              <CardTitle>Activité récente</CardTitle>
             </CardHeader>
             <CardContent>
               {lessonStatuses.length > 0 ? (
@@ -256,7 +290,7 @@ export default function StudentProfilePage() {
                         <div>
                           <h4 className="font-medium">{status.lesson?.title}</h4>
                           <p className="text-sm text-gray-600">
-                            Status changed to {status.masteryLevel.replace('_', ' ')}
+                            Nouveau statut : {formatMasteryLabel(status.masteryLevel)}
                           </p>
                         </div>
                         <div className="text-sm text-gray-500">
@@ -267,9 +301,63 @@ export default function StudentProfilePage() {
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">No recent activity</p>
+                  <p className="text-gray-500">Aucune activité récente</p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Teacher Comments */}
+          <Card>
+            <CardHeader>
+              <div>
+                <CardTitle>Commentaires du professeur</CardTitle>
+                <p className="text-sm text-gray-500 mt-1">
+                  Gardez une trace des points d’attention, des objectifs et des retours partagés en classe.
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <form onSubmit={handleSubmitComment} className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-700">
+                    Ajouter un commentaire personnalisé
+                  </label>
+                  <Textarea
+                    value={newComment}
+                    onChange={event => setNewComment(event.target.value)}
+                    placeholder="Exemple : « Revoir les fractions équivalentes avant le prochain contrôle »"
+                    className="mt-2"
+                    rows={3}
+                  />
+                </div>
+                {commentError && (
+                  <p className="text-sm text-red-600">{commentError}</p>
+                )}
+                <Button type="submit" disabled={commentSubmitting}>
+                  {commentSubmitting ? 'Enregistrement…' : 'Publier le commentaire'}
+                </Button>
+              </form>
+
+              <div className="pt-4 border-t border-gray-100 space-y-3">
+                {studentComments.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    Aucun commentaire pour le moment. Utilisez ce bloc pour partager vos retours pédagogiques.
+                  </p>
+                ) : (
+                  studentComments.map(comment => (
+                    <div key={comment.id} className="border rounded-lg p-3 bg-gray-50">
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                        <span>{comment.teacher?.name || 'Enseignant·e'}</span>
+                        <span>{new Date(comment.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                        {comment.content}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -282,63 +370,111 @@ export default function StudentProfilePage() {
           {/* Recent Exams */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Recent Exams</CardTitle>
+              <CardTitle className="text-lg">Examens récents</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {studentAssessments.length === 0 ? (
-                <p className="text-sm text-gray-500">No exams uploaded yet.</p>
+                <p className="text-sm text-gray-500">Aucune copie importée pour l’instant.</p>
               ) : (
-                studentAssessments.slice(0, 3).map(assessment => (
-                  <div key={assessment.id} className="border rounded-lg p-3 bg-gray-50 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-gray-800">
-                        {assessment.assessment?.title || 'Assessment'}
-                      </p>
-                      <span className="text-xs text-gray-500">
-                        {assessment.createdAt
-                          ? new Date(assessment.createdAt).toLocaleDateString()
-                          : ''}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      Score:{' '}
-                      {typeof assessment.overallScore === 'number' &&
-                      typeof assessment.maxScore === 'number'
-                        ? `${assessment.overallScore}/${assessment.maxScore}`
-                        : 'Pending'}
-                    </p>
-                    {Array.isArray(assessment.gradedResponses) && (
-                      <details className="text-sm text-gray-600">
-                        <summary className="cursor-pointer text-blue-600">
-                          View AI corrections
-                        </summary>
-                        <ul className="mt-2 space-y-2 text-gray-600">
-                          {getQuestionPreview(assessment.gradedResponses).map((question, idx) => (
-                              <li key={idx} className="border rounded-md p-2 bg-white">
-                                <p className="font-medium">
-                                  Q{question.number || idx + 1}: {question.questionText}
-                                </p>
-                                <p>Student: {question.studentAnswer || '—'}</p>
-                                <p>Answer: {question.correctAnswer || '—'}</p>
-                                <p>
-                                  Score:{' '}
-                                  {typeof question.pointsAwarded === 'number' &&
-                                  typeof question.pointsPossible === 'number'
-                                    ? `${question.pointsAwarded}/${question.pointsPossible}`
-                                    : 'N/A'}
-                                </p>
-                                {question.feedback && (
-                                  <p className="text-xs text-gray-500">
-                                    Feedback: {question.feedback}
+                studentAssessments.slice(0, 3).map(assessment => {
+                  const insights = parseCopyInsights(assessment.gradedResponses);
+                  const gradeDisplay =
+                    insights.gradeText ||
+                    (typeof assessment.overallScore === 'number' &&
+                    typeof assessment.maxScore === 'number'
+                      ? `${assessment.overallScore}/${assessment.maxScore}`
+                      : 'Non renseignée');
+
+                  return (
+                      <div key={assessment.id} className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-gray-800">
+                            {assessment.assessment?.title || 'Évaluation'}
+                          </p>
+                          <span className="text-xs text-gray-500">
+                            {assessment.createdAt
+                              ? new Date(assessment.createdAt).toLocaleDateString()
+                              : ''}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600">Note relevée : {gradeDisplay}</p>
+
+                        {insights.adviceSummary.length > 0 && (
+                          <div>
+                            <p className="text-xs uppercase text-gray-400">Conseils clés</p>
+                            <ul className="mt-1 space-y-1 text-sm text-gray-700">
+                              {insights.adviceSummary.map((advice, index) => (
+                                <li key={index} className="flex gap-2">
+                                  <span>•</span>
+                                  <span>{advice}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {insights.programRecommendations.length > 0 && (
+                          <div>
+                            <p className="text-xs uppercase text-gray-400 mb-1">
+                              Axes du programme
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {insights.programRecommendations.map((recommendation, index) => (
+                                <Badge key={`${assessment.id}-rec-${index}`} variant="outline">
+                                  {recommendation}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {insights.questions.length > 0 && (
+                          <details className="text-sm text-gray-600">
+                            <summary className="cursor-pointer text-blue-600">
+                              Voir les notes liées à la copie
+                            </summary>
+                            <ul className="mt-2 space-y-2 text-gray-600">
+                              {insights.questions.slice(0, 3).map((question, idx) => (
+                                <li key={idx} className="border rounded-md p-2 bg-white">
+                                  <p className="font-medium">
+                                    Q{question.number || idx + 1} : {question.questionText}
                                   </p>
-                                )}
-                              </li>
-                            ))}
-                        </ul>
-                      </details>
-                    )}
-                  </div>
-                ))
+                                  {question.studentAnswer && (
+                                    <p className="text-sm">Élève : {question.studentAnswer}</p>
+                                  )}
+                                  {question.teacherComment && (
+                                    <p className="text-sm">Note prof : {question.teacherComment}</p>
+                                  )}
+                                  {question.improvementAdvice && (
+                                    <p className="text-sm">
+                                      Conseil : {question.improvementAdvice}
+                                    </p>
+                                  )}
+                                  {!question.improvementAdvice && question.feedback && (
+                                    <p className="text-sm">
+                                      Conseil : {question.feedback}
+                                    </p>
+                                  )}
+                                  {(question.recommendedProgramFocus ||
+                                    (question.skillTags && question.skillTags.length > 0)) && (
+                                    <p className="text-xs text-gray-500">
+                                      Programme :{' '}
+                                      {[
+                                        question.recommendedProgramFocus,
+                                        ...(question.skillTags || [])
+                                      ]
+                                        .filter(Boolean)
+                                        .join(', ')}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </div>
+                  );
+                })
               )}
             </CardContent>
           </Card>
@@ -346,30 +482,39 @@ export default function StudentProfilePage() {
           {/* Quick Stats */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Quick Stats</CardTitle>
+              <CardTitle className="text-lg">Statistiques rapides</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex justify-between">
-                <span className="text-gray-600">Lessons Assigned</span>
+                <span className="text-gray-600">Leçons assignées</span>
                 <span className="font-medium">{lessonStatuses.length}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Average Score</span>
+                <span className="text-gray-600">Score moyen</span>
                 <span className="font-medium">
                   {lessonStatuses.filter(s => s.score).length > 0
-                    ? Math.round(lessonStatuses.filter(s => s.score).reduce((sum, s) => sum + (s.score || 0), 0) / lessonStatuses.filter(s => s.score).length) + '%'
-                    : 'N/A'
+                    ? Math.round(
+                        lessonStatuses
+                          .filter(s => s.score)
+                          .reduce((sum, s) => sum + (s.score || 0), 0) /
+                        lessonStatuses.filter(s => s.score).length
+                      ) + '%'
+                    : 'N/D'
                   }
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Time in Class</span>
+                <span className="text-gray-600">Ancienneté dans la classe</span>
                 <span className="font-medium">
-                  {Math.floor((new Date().getTime() - new Date(student.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days
+                  {Math.floor(
+                    (new Date().getTime() - new Date(student.createdAt).getTime()) /
+                      (1000 * 60 * 60 * 24)
+                  )}{' '}
+                  jours
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Last Updated</span>
+                <span className="text-gray-600">Dernière mise à jour</span>
                 <span className="font-medium">
                   {new Date(student.updatedAt).toLocaleDateString()}
                 </span>
@@ -380,20 +525,20 @@ export default function StudentProfilePage() {
           {/* Actions */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Quick Actions</CardTitle>
+              <CardTitle className="text-lg">Actions rapides</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button variant="outline" className="w-full">
-                Update Progress
+                Mettre à jour la progression
               </Button>
               <Button variant="outline" className="w-full">
-                Add Notes
+                Ajouter des notes
               </Button>
               <Button variant="outline" className="w-full">
-                View Full Report
+                Voir le rapport complet
               </Button>
               <Button variant="outline" className="w-full text-red-600 border-red-200 hover:bg-red-50">
-                Remove from Class
+                Retirer de la classe
               </Button>
             </CardContent>
           </Card>

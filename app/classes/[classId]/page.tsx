@@ -3,18 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Class, Student } from '@/types';
-type StoredQuestion = {
-  number?: number;
-  questionText?: string;
-  studentAnswer?: string;
-  correctAnswer?: string;
-  pointsAwarded?: number;
-  pointsPossible?: number;
-  feedback?: string;
-};
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
+import { parseCopyInsights } from '@/lib/copy-insights';
 
 export default function ClassPage() {
   const params = useParams();
@@ -64,7 +56,7 @@ export default function ClassPage() {
   }, []);
 
   const handleAddStudent = async () => {
-    const studentName = prompt('Student name:');
+    const studentName = prompt("Nom de l'élève :");
     if (!studentName) return;
 
     try {
@@ -95,7 +87,7 @@ export default function ClassPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400">Chargement…</div>
       </div>
     );
   }
@@ -103,7 +95,7 @@ export default function ClassPage() {
   if (!classData) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-400">Class not found</div>
+        <div className="text-gray-400">Classe introuvable</div>
       </div>
     );
   }
@@ -119,7 +111,7 @@ export default function ClassPage() {
                 onClick={() => router.push('/dashboard?view=classes')}
                 className="text-gray-500 hover:text-gray-700 mb-2 text-sm"
               >
-                ← Back
+                ← Retour
               </button>
               <h1 className="text-3xl font-bold text-gray-800">{classData.name}</h1>
             </div>
@@ -127,7 +119,7 @@ export default function ClassPage() {
               onClick={handleAddStudent}
               className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
             >
-              + New Student
+              + Nouvel élève
             </button>
           </div>
         </div>
@@ -137,12 +129,12 @@ export default function ClassPage() {
       <div className="container mx-auto px-8 py-12">
         {students.length === 0 ? (
           <div className="text-center py-20">
-            <div className="text-gray-400 mb-4">No students yet</div>
+            <div className="text-gray-400 mb-4">Aucun élève pour le moment</div>
             <button
               onClick={handleAddStudent}
               className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
             >
-              Add First Student
+              Ajouter le premier élève
             </button>
           </div>
         ) : (
@@ -171,11 +163,11 @@ export default function ClassPage() {
           <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto space-y-6">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-xs uppercase text-gray-400">Student</p>
+                <p className="text-xs uppercase text-gray-400">Élève</p>
                 <h2 className="text-2xl font-bold text-gray-800">{selectedStudent.name}</h2>
                 <div className="flex gap-2 mt-2 flex-wrap">
                   <Badge variant="secondary">
-                    Age {selectedStudent.age ?? '—'}
+                    Âge {selectedStudent.age ?? '—'}
                   </Badge>
                   {selectedStudentDetails?.class?.name && (
                     <Badge variant="outline">{selectedStudentDetails.class.name}</Badge>
@@ -196,14 +188,14 @@ export default function ClassPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between">
               <div className="text-sm text-gray-500">
                 {studentDetailLoading
-                  ? 'Loading learning data...'
-                  : 'Latest AI insights for this student.'}
+                  ? 'Chargement des données pédagogiques…'
+                  : 'Dernières analyses IA pour cet élève.'}
               </div>
               <Link
                 href={`/students/${selectedStudent.id}`}
                 className="text-blue-600 hover:text-blue-700 text-sm font-medium"
               >
-                Open full student page →
+                Ouvrir la fiche complète →
               </Link>
             </div>
 
@@ -211,9 +203,9 @@ export default function ClassPage() {
               <Card>
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold text-gray-800">AI summary</p>
+                    <p className="font-semibold text-gray-800">Synthèse IA</p>
                     {studentDetailLoading && (
-                      <span className="text-xs text-gray-400">Loading...</span>
+                      <span className="text-xs text-gray-400">Chargement…</span>
                     )}
                   </div>
                   {selectedStudentDetails?.summaries?.length ? (
@@ -234,7 +226,7 @@ export default function ClassPage() {
                     ))
                   ) : (
                     <p className="text-sm text-gray-500">
-                      Upload a test copy to generate an AI summary.
+                      Importez une copie pour générer une synthèse IA.
                     </p>
                   )}
                 </CardContent>
@@ -243,9 +235,9 @@ export default function ClassPage() {
               <Card>
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold text-gray-800">Recent exams</p>
+                    <p className="font-semibold text-gray-800">Examens récents</p>
                     {studentDetailLoading && (
-                      <span className="text-xs text-gray-400">Loading...</span>
+                      <span className="text-xs text-gray-400">Chargement…</span>
                     )}
                   </div>
                   {selectedStudentDetails?.studentAssessments?.length ? (
@@ -253,7 +245,7 @@ export default function ClassPage() {
                       <div key={assessment.id} className="border rounded-lg p-3 bg-gray-50 space-y-1">
                         <div className="flex items-center justify-between">
                           <p className="font-medium text-gray-800">
-                            {assessment.assessment?.title || 'Assessment'}
+                            {assessment.assessment?.title || 'Évaluation'}
                           </p>
                           <span className="text-xs text-gray-400">
                             {assessment.createdAt
@@ -261,37 +253,89 @@ export default function ClassPage() {
                               : ''}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600">
-                          Score:{' '}
-                          {typeof assessment.overallScore === 'number' &&
-                          typeof assessment.maxScore === 'number'
-                            ? `${assessment.overallScore}/${assessment.maxScore}`
-                            : 'Pending'}
-                        </p>
-                        {Array.isArray(assessment.gradedResponses) && (
-                          <details className="text-sm text-gray-600">
-                            <summary className="cursor-pointer text-blue-600">
-                              View AI corrections
-                            </summary>
-                            <ul className="mt-2 space-y-2 text-gray-600">
-                              {(assessment.gradedResponses as StoredQuestion[])
-                                .slice(0, 2)
-                                .map((question, idx) => (
-                                  <li key={idx} className="border rounded-md p-2 bg-white">
-                                    <p className="font-medium">
-                                      Q{question.number || idx + 1}: {question.questionText}
-                                    </p>
-                                    <p>Student: {question.studentAnswer || '—'}</p>
-                                    <p>Answer: {question.correctAnswer || '—'}</p>
-                                  </li>
-                                ))}
-                            </ul>
-                          </details>
-                        )}
+                        {(() => {
+                          const insights = parseCopyInsights(assessment.gradedResponses);
+                          const gradeDisplay =
+                            insights.gradeText ||
+                            (typeof assessment.overallScore === 'number' &&
+                            typeof assessment.maxScore === 'number'
+                              ? `${assessment.overallScore}/${assessment.maxScore}`
+                              : 'Non renseignée');
+
+                          return (
+                            <>
+                              <p className="text-sm text-gray-600">Note relevée : {gradeDisplay}</p>
+
+                              {insights.adviceSummary.length > 0 && (
+                                <div>
+                                  <p className="text-xs uppercase text-gray-400">Conseils clés</p>
+                                  <ul className="mt-1 space-y-1 text-sm text-gray-700">
+                                    {insights.adviceSummary.map((advice, index) => (
+                                      <li key={`${assessment.id}-advice-${index}`} className="flex gap-2">
+                                        <span>•</span>
+                                        <span>{advice}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {insights.programRecommendations.length > 0 && (
+                                <div>
+                                  <p className="text-xs uppercase text-gray-400 mb-1">Axes du programme</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {insights.programRecommendations.map((recommendation, index) => (
+                                      <Badge key={`${assessment.id}-recommendation-${index}`} variant="outline">
+                                        {recommendation}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {insights.questions.length > 0 && (
+                                <details className="text-sm text-gray-600">
+                                  <summary className="cursor-pointer text-blue-600">
+                                    Voir les notes liées à la copie
+                                  </summary>
+                                  <ul className="mt-2 space-y-2 text-gray-600">
+                                    {insights.questions.slice(0, 2).map((question, idx) => (
+                                      <li key={idx} className="border rounded-md p-2 bg-white">
+                                        <p className="font-medium">
+                                          Q{question.number || idx + 1} : {question.questionText}
+                                        </p>
+                                        {question.teacherComment && (
+                                          <p className="text-sm">Note prof : {question.teacherComment}</p>
+                                        )}
+                                        {(question.improvementAdvice || question.feedback) && (
+                                          <p className="text-sm">
+                                            Conseil : {question.improvementAdvice || question.feedback}
+                                          </p>
+                                        )}
+                                        {(question.recommendedProgramFocus ||
+                                          (question.skillTags && question.skillTags.length > 0)) && (
+                                          <p className="text-xs text-gray-500">
+                                            Programme :{' '}
+                                            {[
+                                              question.recommendedProgramFocus,
+                                              ...(question.skillTags || [])
+                                            ]
+                                              .filter(Boolean)
+                                              .join(', ')}
+                                          </p>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No exam uploads yet.</p>
+                    <p className="text-sm text-gray-500">Aucun examen importé.</p>
                   )}
                 </CardContent>
               </Card>

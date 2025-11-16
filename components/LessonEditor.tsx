@@ -41,7 +41,7 @@ export default function LessonEditor({ lesson, onSave, onClose }: LessonEditorPr
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-xl">Edit Lesson</CardTitle>
+          <CardTitle className="text-xl">Modifier la leçon</CardTitle>
           <Button
             variant="ghost"
             size="sm"
@@ -55,12 +55,12 @@ export default function LessonEditor({ lesson, onSave, onClose }: LessonEditorPr
         <CardContent className="space-y-6">
           {/* Lesson Title */}
           <div className="space-y-2">
-            <Label htmlFor="title">Lesson Title</Label>
+            <Label htmlFor="title">Titre de la leçon</Label>
             <Input
               id="title"
               value={formData.title}
               onChange={(e) => handleInputChange('title', e.target.value)}
-              placeholder="Enter lesson title..."
+              placeholder="Saisissez le titre de la leçon…"
               className="w-full"
             />
           </div>
@@ -72,7 +72,7 @@ export default function LessonEditor({ lesson, onSave, onClose }: LessonEditorPr
               id="description"
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
-              placeholder="Describe what students will learn in this lesson..."
+              placeholder="Décrivez ce que les élèves apprendront pendant cette leçon…"
               rows={3}
               className="w-full resize-none"
             />
@@ -80,17 +80,17 @@ export default function LessonEditor({ lesson, onSave, onClose }: LessonEditorPr
 
           {/* Test Data */}
           <div className="space-y-2">
-            <Label htmlFor="testData">Test Data / Assessment Questions</Label>
+            <Label htmlFor="testData">Données de test / questions d’évaluation</Label>
             <Textarea
               id="testData"
               value={formData.testData}
               onChange={(e) => handleInputChange('testData', e.target.value)}
-              placeholder="Add test questions, quizzes, or assessment data (JSON format supported)..."
+              placeholder="Ajoutez des questions, des quiz ou toute donnée d’évaluation (JSON accepté)…"
               rows={6}
               className="w-full resize-none font-mono text-sm"
             />
             <p className="text-xs text-gray-500">
-              This data will be used for AI-generated student summaries and progress tracking.
+              Ces données alimentent les synthèses IA et le suivi de progression.
             </p>
           </div>
 
@@ -101,13 +101,13 @@ export default function LessonEditor({ lesson, onSave, onClose }: LessonEditorPr
               onClick={onClose}
               disabled={isSaving}
             >
-              Cancel
+              Annuler
             </Button>
             <Button
               onClick={handleSave}
               disabled={isSaving || !formData.title.trim()}
             >
-              {isSaving ? 'Saving...' : 'Save Changes'}
+              {isSaving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
           </div>
         </CardContent>

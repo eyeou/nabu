@@ -6,8 +6,9 @@ import Navbar from "@/components/Navbar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "EduLearn - Educational Management Platform",
-  description: "A comprehensive platform for teachers to manage students with different learning levels, create programs, and track progress.",
+  title: "EduLearn - Plateforme de gestion pédagogique",
+  description:
+    "Une plateforme complète pour aider les enseignants à gérer des élèves aux profils variés, créer des parcours et suivre les progrès.",
 };
 
 export default function RootLayout({
@@ -16,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="fr">
       <body className={inter.className}>
         <Navbar />
         <main className="min-h-screen bg-gray-50">

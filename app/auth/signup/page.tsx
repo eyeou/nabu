@@ -25,25 +25,25 @@ export default function SignupPage() {
       ...prev,
       [field]: value
     }));
-    // Clear error when user starts typing
+    // Efface l'erreur lorsque l'utilisateur ressaisit une valeur
     if (error) setError('');
   };
 
   const validateForm = () => {
     if (!formData.name.trim()) {
-      setError('Name is required');
+      setError('Le nom est obligatoire');
       return false;
     }
     if (!formData.email) {
-      setError('Email is required');
+      setError('L’adresse e-mail est obligatoire');
       return false;
     }
     if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters long');
+      setError('Le mot de passe doit contenir au moins 8 caractères');
       return false;
     }
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setError('Les mots de passe ne correspondent pas');
       return false;
     }
     return true;
@@ -75,10 +75,10 @@ export default function SignupPage() {
       if (data.success) {
         router.push('/dashboard');
       } else {
-        setError(data.message || 'Signup failed');
+        setError(data.message || 'Création de compte impossible');
       }
     } catch {
-      setError('An unexpected error occurred');
+      setError('Une erreur inattendue est survenue');
     } finally {
       setIsLoading(false);
     }
@@ -91,9 +91,9 @@ export default function SignupPage() {
           <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-4">
             <span className="text-white font-bold text-lg">EL</span>
           </div>
-          <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
+          <CardTitle className="text-2xl font-bold">Créer un compte</CardTitle>
           <p className="text-gray-600 text-sm">
-            Start managing your students with EduLearn
+            Commencez à gérer vos élèves avec EduLearn
           </p>
         </CardHeader>
 
@@ -106,52 +106,52 @@ export default function SignupPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
+              <Label htmlFor="name">Nom complet</Label>
               <Input
                 id="name"
                 type="text"
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
-                placeholder="Enter your full name"
+                placeholder="Entrez votre nom complet"
                 required
                 disabled={isLoading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Adresse e-mail</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
-                placeholder="Enter your email"
+                placeholder="Entrez votre adresse e-mail"
                 required
                 disabled={isLoading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Mot de passe</Label>
               <Input
                 id="password"
                 type="password"
                 value={formData.password}
                 onChange={(e) => handleInputChange('password', e.target.value)}
-                placeholder="Create a password (min 8 characters)"
+                placeholder="Choisissez un mot de passe (8 caractères min.)"
                 required
                 disabled={isLoading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Label htmlFor="confirmPassword">Confirmer le mot de passe</Label>
               <Input
                 id="confirmPassword"
                 type="password"
                 value={formData.confirmPassword}
                 onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                placeholder="Confirm your password"
+                placeholder="Confirmez votre mot de passe"
                 required
                 disabled={isLoading}
               />
@@ -164,16 +164,16 @@ export default function SignupPage() {
               className="w-full"
               disabled={isLoading || !formData.name || !formData.email || !formData.password}
             >
-              {isLoading ? 'Creating Account...' : 'Create Account'}
+              {isLoading ? 'Création du compte…' : 'Créer un compte'}
             </Button>
 
             <div className="text-center text-sm">
-              <span className="text-gray-600">Already have an account? </span>
+              <span className="text-gray-600">Vous avez déjà un compte ? </span>
               <Link 
                 href="/auth/login" 
                 className="text-blue-600 hover:text-blue-700 font-medium"
               >
-                Sign in
+                Se connecter
               </Link>
             </div>
           </CardFooter>

@@ -23,7 +23,7 @@ export default function WelcomePage() {
               <div className="w-12 h-12 rounded-full bg-blue-600"></div>
               <div className="w-12 h-12 rounded-full bg-blue-500"></div>
             </div>
-            <h2 className="text-2xl font-bold text-gray-800">Programs</h2>
+            <h2 className="text-2xl font-bold text-gray-800">Programmes</h2>
           </div>
         </button>
 

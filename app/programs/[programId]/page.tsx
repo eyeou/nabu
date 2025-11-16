@@ -1,12 +1,33 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, ChangeEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Program, Lesson, Class, StudentSummary } from '@/types';
+import Link from 'next/link';
+import { Badge } from '@/components/ui/badge';
 
 interface ClassWithStudents extends Class {
   students?: { id: string; name: string; age?: number; avatarUrl?: string | null }[];
 }
+
+interface ProcessedCopyResult {
+  studentId: string;
+  studentName: string;
+  wasCreated: boolean;
+  gradeText?: string;
+  assessmentId: string;
+  studentAssessmentId: string;
+  summaries: StudentSummary[];
+}
+
+const parseBulletPoints = (jsonString: string) => {
+  try {
+    const parsed = JSON.parse(jsonString);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return jsonString.split('\n').filter(point => point.trim());
+  }
+};
 
 export default function ProgramPage() {
   const params = useParams();
@@ -21,14 +42,12 @@ export default function ProgramPage() {
   const [classes, setClasses] = useState<ClassWithStudents[]>([]);
   const [classesLoading, setClassesLoading] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
-  const [studentNameInput, setStudentNameInput] = useState('');
 
   const [examFiles, setExamFiles] = useState<File[]>([]);
   const [examPreviewUrls, setExamPreviewUrls] = useState<string[]>([]);
   const [uploadingExam, setUploadingExam] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [generatedSummaries, setGeneratedSummaries] = useState<StudentSummary[]>([]);
+  const [processedResults, setProcessedResults] = useState<ProcessedCopyResult[]>([]);
 
   const fetchProgram = useCallback(async () => {
     try {
@@ -71,7 +90,7 @@ export default function ProgramPage() {
   }, [fetchClasses]);
 
   const handleCreateLesson = async () => {
-    const lessonTitle = prompt('Lesson name:');
+    const lessonTitle = prompt('Nom de la leçon :');
     if (!lessonTitle) return;
 
     try {
@@ -98,35 +117,20 @@ export default function ProgramPage() {
   const handleLessonClick = (lesson: Lesson) => {
     setSelectedLesson(lesson);
     setUploadMessage(null);
-    setGeneratedSummaries([]);
+    setProcessedResults([]);
   };
-
-  const studentsForSelectedClass = useMemo(() => {
-    if (!selectedClassId) return [];
-    return classes.find(cls => cls.id === selectedClassId)?.students || [];
-  }, [classes, selectedClassId]);
 
   const handleClassChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setSelectedClassId(event.target.value);
-    setSelectedStudentId('');
-    setStudentNameInput('');
-  };
-
-  const handleStudentChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    setSelectedStudentId(event.target.value);
-    if (event.target.value) {
-      const student = studentsForSelectedClass.find(s => s.id === event.target.value);
-      setStudentNameInput(student?.name || '');
-    } else {
-      setStudentNameInput('');
-    }
+    setProcessedResults([]);
+    setUploadMessage(null);
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     setExamFiles(files);
     setUploadMessage(null);
-    setGeneratedSummaries([]);
+    setProcessedResults([]);
 
     const previews = files.map(file => URL.createObjectURL(file));
     setExamPreviewUrls(previews);
@@ -149,27 +153,19 @@ export default function ProgramPage() {
 
   const handleExamUpload = async () => {
     if (!selectedLesson) {
-      setUploadMessage({ type: 'error', text: 'Please select a lesson first.' });
+      setUploadMessage({ type: 'error', text: 'Veuillez d’abord sélectionner une leçon.' });
       return;
     }
 
     if (examFiles.length === 0) {
-      setUploadMessage({ type: 'error', text: 'Please choose at least one photo of the exam.' });
+      setUploadMessage({ type: 'error', text: 'Ajoutez au moins une photo de copie.' });
       return;
     }
 
-    if (!selectedStudentId && !selectedClassId) {
+    if (!selectedClassId) {
       setUploadMessage({
         type: 'error',
-        text: 'Pick a class (and optionally an existing student) before uploading.'
-      });
-      return;
-    }
-
-    if (!selectedStudentId && !studentNameInput.trim()) {
-      setUploadMessage({
-        type: 'error',
-        text: 'Provide a student name so we can create or link the student.'
+        text: 'Choisissez la classe concernée pour rattacher ou créer automatiquement les élèves.'
       });
       return;
     }
@@ -187,25 +183,23 @@ export default function ProgramPage() {
         body: JSON.stringify({
           lessonId: selectedLesson.id,
           imageDataUrls,
-          classId: selectedClassId || undefined,
-          studentId: selectedStudentId || undefined,
-          providedStudentName: studentNameInput?.trim() || undefined
+          classId: selectedClassId
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setUploadMessage({ type: 'success', text: data.message || 'Exam processed successfully!' });
-        setGeneratedSummaries(data.data?.summaries || []);
+        setUploadMessage({ type: 'success', text: data.message || 'Copie analysée avec succès !' });
+        setProcessedResults(data.data?.processedStudents || []);
         setExamFiles([]);
         setExamPreviewUrls([]);
       } else {
-        setUploadMessage({ type: 'error', text: data.message || 'Failed to process exam.' });
+        setUploadMessage({ type: 'error', text: data.message || 'Échec de l’analyse de la copie.' });
       }
     } catch (error) {
       console.error('Upload exam photo failed:', error);
-      setUploadMessage({ type: 'error', text: 'Unexpected error while uploading exam.' });
+      setUploadMessage({ type: 'error', text: 'Erreur inattendue lors du téléversement.' });
     } finally {
       setUploadingExam(false);
     }
@@ -214,7 +208,7 @@ export default function ProgramPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400">Chargement…</div>
       </div>
     );
   }
@@ -222,7 +216,7 @@ export default function ProgramPage() {
   if (!program) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-400">Program not found</div>
+        <div className="text-gray-400">Programme introuvable</div>
       </div>
     );
   }
@@ -238,7 +232,7 @@ export default function ProgramPage() {
                 onClick={() => router.push('/dashboard?view=programs')}
                 className="text-gray-500 hover:text-gray-700 mb-2 text-sm"
               >
-                ← Back
+                ← Retour
               </button>
               <h1 className="text-3xl font-bold text-gray-800">{program.title}</h1>
             </div>
@@ -246,7 +240,7 @@ export default function ProgramPage() {
               onClick={handleCreateLesson}
               className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
             >
-              + New Lesson
+              + Nouvelle leçon
             </button>
           </div>
         </div>
@@ -256,12 +250,12 @@ export default function ProgramPage() {
       <div className="container mx-auto px-8 py-12">
         {lessons.length === 0 ? (
           <div className="text-center py-20">
-            <div className="text-gray-400 mb-4">No lessons yet</div>
+            <div className="text-gray-400 mb-4">Aucune leçon pour l’instant</div>
             <button
               onClick={handleCreateLesson}
               className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
             >
-              Create First Lesson
+              Créer la première leçon
             </button>
           </div>
         ) : (
@@ -290,7 +284,7 @@ export default function ProgramPage() {
           <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <p className="text-xs uppercase text-gray-400">Lesson</p>
+                <p className="text-xs uppercase text-gray-400">Leçon</p>
                 <h2 className="text-2xl font-bold text-gray-800">{selectedLesson.title}</h2>
               </div>
               <button
@@ -305,30 +299,31 @@ export default function ProgramPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
                 <p className="text-gray-600">
-                  {selectedLesson.description?.trim() || 'No description yet.'}
+                  {selectedLesson.description?.trim() || 'Pas encore de description.'}
                 </p>
               </div>
 
               <div className="border rounded-xl p-5 space-y-4 bg-gray-50">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Upload student exam copy</h3>
+                  <h3 className="text-lg font-semibold text-gray-800">Téléverser une copie d’examen</h3>
                   <p className="text-sm text-gray-500">
-                    Capture or upload the student&apos;s test page. The AI will read it, correct it, and
-                    refresh that student&apos;s profile automatically.
+                    Ajoutez toutes les copies corrigées (jusqu&apos;à 30). L&apos;IA lit chaque page,
+                    détecte le nom inscrit, capture la note et pousse les conseils directement sur la fiche
+                    élève correspondante.
                   </p>
                 </div>
 
                 <div className="grid gap-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Classe</label>
                       <select
                         value={selectedClassId}
                         onChange={handleClassChange}
                         className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-400"
                       >
                         <option value="">
-                          {classesLoading ? 'Loading classes...' : 'Select a class'}
+                          {classesLoading ? 'Chargement des classes…' : 'Choisissez une classe'}
                         </option>
                         {classes.map(cls => (
                           <option key={cls.id} value={cls.id}>
@@ -336,49 +331,23 @@ export default function ProgramPage() {
                           </option>
                         ))}
                       </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Student (optional)
-                      </label>
-                      <select
-                        value={selectedStudentId}
-                        onChange={handleStudentChange}
-                        disabled={!selectedClassId}
-                        className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-400 disabled:bg-gray-100"
-                      >
-                        <option value="">
-                          {selectedClassId ? 'Link an existing student' : 'Select class first'}
-                        </option>
-                        {studentsForSelectedClass.map(student => (
-                          <option key={student.id} value={student.id}>
-                            {student.name}
-                          </option>
-                        ))}
-                      </select>
+                      <p className="text-xs text-gray-400 mt-1">
+                        La classe permet de rattacher automatiquement les élèves détectés (création incluse).
+                      </p>
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Student name (required if new)
-                    </label>
-                    <input
-                      type="text"
-                      value={studentNameInput}
-                      onChange={event => setStudentNameInput(event.target.value)}
-                      placeholder="Enter the student&apos;s full name"
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      If you didn&apos;t select an existing student, we&apos;ll create one inside that class.
+                  <div className="rounded-lg bg-white border px-4 py-3 text-sm text-gray-600">
+                    <p className="font-medium text-gray-800 mb-1">Détection automatique</p>
+                    <p>
+                      Ajoutez jusqu&apos;à 30 copies à la fois. Le nom présent sur chaque page sert à
+                      identifier l&apos;élève (création automatique si introuvable). Assurez-vous que le
+                      nom est lisible sur toutes les pages.
                     </p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Exam photos (multi-page supported)
+                      Photos des copies (multi-pages)
                     </label>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center gap-3 text-center w-full">
                       <input
@@ -394,7 +363,7 @@ export default function ProgramPage() {
                             <img
                               key={url}
                               src={url}
-                              alt={`Exam preview ${index + 1}`}
+                              alt={`Aperçu de la copie ${index + 1}`}
                               className="max-h-32 rounded-lg border object-contain w-full"
                             />
                           ))}
@@ -424,35 +393,72 @@ export default function ProgramPage() {
                       disabled={uploadingExam}
                       className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:bg-gray-300"
                     >
-                      {uploadingExam ? 'Analyzing...' : 'Upload & analyze'}
+                      {uploadingExam ? 'Analyse en cours…' : 'Téléverser et analyser'}
                     </button>
                   </div>
                 </div>
               </div>
 
-              {generatedSummaries.length > 0 && (
-                <div className="border rounded-xl p-5 space-y-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-800">AI summary refreshed</h3>
+              {processedResults.length > 0 && (
+                <div className="border rounded-xl p-5 space-y-5 bg-white">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      Copies traitées ({processedResults.length})
+                    </h3>
                     <p className="text-sm text-gray-500">
-                      These bullet points were pushed to the student profile automatically.
+                      Les profils élèves ont été mis à jour automatiquement avec la note détectée et les
+                      recommandations IA.
                     </p>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    {generatedSummaries.map(summary => (
-                      <div key={summary.id} className="border rounded-lg p-4 bg-gray-50">
-                        <p className="text-xs uppercase text-gray-400 mb-2">{summary.subject}</p>
-                        <ul className="space-y-2 text-sm text-gray-700">
-                          {JSON.parse(summary.bulletPointsJson || '[]').map(
-                            (point: string, index: number) => (
-                              <li key={index} className="flex gap-2 items-start">
-                                <span className="text-blue-400 mt-0.5">•</span>
-                                <span>{point}</span>
-                              </li>
-                            )
-                          )}
-                        </ul>
+                  <div className="space-y-4">
+                    {processedResults.map(result => (
+                      <div
+                        key={result.studentAssessmentId}
+                        className="border rounded-lg p-4 bg-gray-50 space-y-3"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-gray-900">{result.studentName}</p>
+                              {result.wasCreated && (
+                                <Badge variant="outline" className="text-green-700 border-green-200">
+                                  Nouveau profil
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-600">
+                              Note détectée : {result.gradeText || 'Non communiquée'}
+                            </p>
+                          </div>
+                          <Link
+                            href={`/students/${result.studentId}`}
+                            className="text-blue-600 text-sm font-medium hover:text-blue-700"
+                          >
+                            Ouvrir la fiche →
+                          </Link>
+                        </div>
+
+                        {result.summaries.length > 0 && (
+                          <div className="grid gap-4 sm:grid-cols-3">
+                            {result.summaries.map(summary => {
+                              const bulletPoints = parseBulletPoints(summary.bulletPointsJson || '[]');
+                              return (
+                                <div key={summary.id} className="border rounded-lg p-3 bg-white">
+                                  <p className="text-xs uppercase text-gray-400 mb-2">{summary.subject}</p>
+                                  <ul className="space-y-1 text-sm text-gray-700">
+                                    {bulletPoints.map((point, index) => (
+                                      <li key={`${summary.id}-${index}`} className="flex gap-2 items-start">
+                                        <span className="text-blue-400 mt-0.5">•</span>
+                                        <span>{point}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

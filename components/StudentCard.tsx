@@ -20,7 +20,7 @@ export default function StudentCard({ student, onClick }: StudentCardProps) {
         {student.avatarUrl ? (
           <img 
             src={student.avatarUrl} 
-            alt={`${student.name}'s avatar`}
+            alt={`Avatar de ${student.name}`}
             className="w-16 h-16 rounded-full object-cover border-4 border-blue-200"
           />
         ) : (
@@ -37,14 +37,14 @@ export default function StudentCard({ student, onClick }: StudentCardProps) {
             {student.name}
           </h3>
           {student.age && (
-            <p className="text-sm text-gray-500">Age {student.age}</p>
+            <p className="text-sm text-gray-500">Âge {student.age}</p>
           )}
         </div>
         
         {/* Quick Status Indicator */}
         <div className="flex items-center space-x-1">
           <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-          <span className="text-xs text-gray-500">Active</span>
+          <span className="text-xs text-gray-500">Actif</span>
         </div>
       </div>
     </Card>

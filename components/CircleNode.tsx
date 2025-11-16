@@ -10,6 +10,13 @@ export default function CircleNode({
   onClick,
   className
 }: CircleNodeProps) {
+  const statusLabels: Record<string, string> = {
+    completed: 'Terminé',
+    in_progress: 'En cours',
+    mastered: 'Maîtrisé',
+    not_started: 'Non commencé'
+  };
+
   const getStatusColor = () => {
     if (type === 'student') {
       return 'bg-blue-500 hover:bg-blue-600 border-blue-300';
@@ -69,8 +76,8 @@ export default function CircleNode({
           {title}
         </p>
         {status !== 'default' && type === 'lesson' && (
-          <p className="text-xs text-gray-500 capitalize">
-            {status.replace('_', ' ')}
+          <p className="text-xs text-gray-500">
+            {statusLabels[status] || status.replace('_', ' ')}
           </p>
         )}
       </div>

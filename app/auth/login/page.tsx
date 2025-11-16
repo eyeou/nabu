@@ -23,7 +23,7 @@ export default function LoginPage() {
       ...prev,
       [field]: value
     }));
-    // Clear error when user starts typing
+    // Efface l'erreur lorsque l'utilisateur ressaisit une valeur
     if (error) setError('');
   };
 
@@ -46,10 +46,10 @@ export default function LoginPage() {
       if (data.success) {
         router.push('/dashboard');
       } else {
-        setError(data.message || 'Login failed');
+        setError(data.message || 'Échec de la connexion');
       }
     } catch {
-      setError('An unexpected error occurred');
+      setError('Une erreur inattendue est survenue');
     } finally {
       setIsLoading(false);
     }
@@ -62,9 +62,9 @@ export default function LoginPage() {
           <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-4">
             <span className="text-white font-bold text-lg">EL</span>
           </div>
-          <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl font-bold">Ravi de vous revoir</CardTitle>
           <p className="text-gray-600 text-sm">
-            Sign in to your EduLearn teacher account
+            Connectez-vous à votre compte enseignant EduLearn
           </p>
         </CardHeader>
 
@@ -77,26 +77,26 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Adresse e-mail</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
-                placeholder="Enter your email"
+                placeholder="Entrez votre adresse e-mail"
                 required
                 disabled={isLoading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Mot de passe</Label>
               <Input
                 id="password"
                 type="password"
                 value={formData.password}
                 onChange={(e) => handleInputChange('password', e.target.value)}
-                placeholder="Enter your password"
+                placeholder="Entrez votre mot de passe"
                 required
                 disabled={isLoading}
               />
@@ -109,16 +109,16 @@ export default function LoginPage() {
               className="w-full"
               disabled={isLoading || !formData.email || !formData.password}
             >
-              {isLoading ? 'Signing In...' : 'Sign In'}
+              {isLoading ? 'Connexion…' : 'Se connecter'}
             </Button>
 
             <div className="text-center text-sm">
-              <span className="text-gray-600">Don&apos;t have an account? </span>
+              <span className="text-gray-600">Pas encore de compte ? </span>
               <Link 
                 href="/auth/signup" 
                 className="text-blue-600 hover:text-blue-700 font-medium"
               >
-                Sign up
+                Créer un compte
               </Link>
             </div>
           </CardFooter>

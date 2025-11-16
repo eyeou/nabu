@@ -28,13 +28,17 @@ interface AssessmentSummaryForPrompt {
   lessonTitle?: string;
   overallScore?: number;
   maxScore?: number;
+  gradeText?: string;
+  adviceSummary?: string[];
+  programRecommendations?: string[];
   questions: Array<{
     questionText: string;
     studentAnswer?: string;
-    correctAnswer?: string;
-    pointsAwarded?: number;
-    pointsPossible?: number;
+    teacherComment?: string;
+    improvementAdvice?: string;
+    recommendedProgramFocus?: string;
     feedback?: string;
+    skillTags?: string[];
   }>;
 }
 
@@ -54,11 +58,14 @@ export interface ExamQuestionAnalysis {
   number: number;
   questionText: string;
   studentAnswer?: string;
+  teacherComment?: string;
+  improvementAdvice?: string;
+  recommendedProgramFocus?: string;
+  feedback?: string;
+  skillTags?: string[];
   correctAnswer?: string;
   pointsPossible?: number;
   pointsAwarded?: number;
-  feedback?: string;
-  skillTags?: string[];
 }
 
 export interface ExamAnalysisResult {
@@ -68,6 +75,9 @@ export interface ExamAnalysisResult {
   rawText?: string;
   overallScore?: number;
   maxScore?: number;
+  gradeText?: string;
+  adviceSummary?: string[];
+  programRecommendations?: string[];
   questions: ExamQuestionAnalysis[];
 }
 
@@ -151,14 +161,18 @@ function buildPromptInput(student: StudentForAnalysis) {
       lessonTitle: assessment.lessonTitle,
       overallScore: assessment.overallScore,
       maxScore: assessment.maxScore,
+      gradeText: assessment.gradeText,
+      adviceSummary: assessment.adviceSummary,
+      programRecommendations: assessment.programRecommendations,
       questions: assessment.questions?.map(question => ({
         number: question.number,
         questionText: question.questionText,
         studentAnswer: question.studentAnswer,
-        correctAnswer: question.correctAnswer,
-        pointsAwarded: question.pointsAwarded,
-        pointsPossible: question.pointsPossible,
-        feedback: question.feedback
+        teacherComment: question.teacherComment,
+        improvementAdvice: question.improvementAdvice,
+        recommendedProgramFocus: question.recommendedProgramFocus,
+        feedback: question.feedback,
+        skillTags: question.skillTags
       }))
     })) ?? [];
 
@@ -188,10 +202,11 @@ export async function generateStudentAnalysisFromLLM(
       {
         role: 'system',
         content:
-          'Tu es un coach pédagogique francophone. Tu analyses EXCLUSIVEMENT les copies corrigées des élèves (questions, réponses, corrections, feedback) pour déterminer leurs forces, faiblesses et recommandations actionnables. ' +
-          'Tu ignores tout signal qui ne vient pas d\'une évaluation. ' +
+          'Tu es un coach pédagogique francophone. Tu analyses EXCLUSIVEMENT les copies corrigées des élèves (questions, réponses, commentaires du professeur, conseils, sections du programme à revoir) pour déterminer leurs forces, faiblesses et recommandations actionnables. ' +
+          'Tu ignores tout signal qui ne vient pas d\'une évaluation et tu ne fais aucun calcul de notes supplémentaire (la note affichée sur la copie est la seule référence). ' +
           'Ta réponse DOIT être un seul objet JSON avec exactement les clés "strengths", "weaknesses", "recommendations". ' +
-          'Chaque clé contient un tableau de puces rédigées en français clair, directement liées aux erreurs ou réussites observées dans les copies. '
+          'Chaque clé contient un tableau de puces rédigées en français clair, directement liées aux erreurs ou réussites observées dans les copies. ' +
+          'Les recommandations mentionnent explicitement les leçons ou composantes du programme à retravailler quand l\'information est disponible.'
       },
       {
         role: 'user',
@@ -292,36 +307,43 @@ function fallbackAnalysis(student: StudentForAnalysis): StudentAnalysisOutput {
 export async function analyzeAndGradeExamImage(params: {
   imageUrl: string;
   lessonTitle?: string;
-  providedStudentName?: string;
 }): Promise<ExamAnalysisResult> {
-  const { imageUrl, lessonTitle, providedStudentName } = params;
+  const { imageUrl, lessonTitle } = params;
 
   const instructions =
-    'You are an expert educator and exam grader. You will be given an image of a handwritten or printed student test. ' +
-    'Read every question and the student\'s responses using OCR. Infer the correct answers when necessary. ' +
+    'You are an expert educator reading graded exam copies. Each photo already contains the student name and the grade written by the teacher. ' +
+    'Transcribe the student name EXACTLY as written (keep accents, uppercase, hyphens). ' +
+    'Transcribe the grade text EXACTLY as written ("16/20", "B+", "18,5 sur 20", etc.). Never invent or recompute a grade. ' +
+    'Only if the grade text clearly contains numbers, set "overallScore" and "maxScore" accordingly; otherwise set them to null. ' +
+    'Extract the teacher comments, the student answers, and generate actionable improvement advice referencing concrete skills or sections of the program. ' +
     'Output a SINGLE JSON object with the following shape:\n' +
     '{\n' +
     '  "detectedStudentName": string,\n' +
     '  "examTitle": string,\n' +
     '  "subject": string,\n' +
-    '  "overallScore": number,\n' +
-    '  "maxScore": number,\n' +
+    '  "gradeText": string,\n' +
+    '  "overallScore": number | null,\n' +
+    '  "maxScore": number | null,\n' +
     '  "rawText": string,\n' +
+    '  "adviceSummary": string[],\n' +
+    '  "programRecommendations": string[],\n' +
     '  "questions": [\n' +
     '    {\n' +
     '      "number": number,\n' +
     '      "questionText": string,\n' +
     '      "studentAnswer": string,\n' +
+    '      "teacherComment": string,\n' +
+    '      "improvementAdvice": string,\n' +
+    '      "recommendedProgramFocus": string,\n' +
+    '      "skillTags": string[],\n' +
+    '      "feedback": string,\n' +
     '      "correctAnswer": string,\n' +
     '      "pointsPossible": number,\n' +
-    '      "pointsAwarded": number,\n' +
-    '      "feedback": string,\n' +
-    '      "skillTags": string[]\n' +
+    '      "pointsAwarded": number\n' +
     '    }\n' +
     '  ]\n' +
     '}\n' +
-    'If information is missing, make a best effort guess and clearly state uncertainties in feedback. ' +
-    'Do not include any explanation outside of the JSON.';
+    'Return ONLY the JSON object. If information is missing, leave the corresponding fields null or empty arrays and explain uncertainties inside the feedback.';
 
   const messages = [
     {
@@ -333,10 +355,7 @@ export async function analyzeAndGradeExamImage(params: {
       content: [
         {
           type: 'text',
-          text:
-            `Lesson context: ${lessonTitle || 'Unknown lesson'}.\n` +
-            (providedStudentName ? `Teacher-provided student name: ${providedStudentName}.\n` : '') +
-            'Return only the JSON object.'
+          text: `Lesson context: ${lessonTitle || 'Unknown lesson'}.\nAnalyse la copie et renvoie uniquement le JSON demandé.`
         },
         {
           type: 'image_url',
@@ -366,27 +385,41 @@ export async function analyzeAndGradeExamImage(params: {
       throw new Error('Missing questions array in exam analysis response');
     }
 
+    const normalizeStringArray = (value?: unknown): string[] =>
+      Array.isArray(value)
+        ? (value as unknown[])
+            .filter(item => typeof item === 'string')
+            .map(item => (item as string).trim())
+            .filter(Boolean)
+        : [];
+
     const normalizedQuestions = parsed.questions.map((question, index) => {
       const q = question as Partial<ExamQuestionAnalysis>;
       return {
         number: typeof q.number === 'number' ? q.number : index + 1,
         questionText: q.questionText || '',
         studentAnswer: q.studentAnswer,
+        teacherComment: q.teacherComment || q.feedback,
+        improvementAdvice: q.improvementAdvice || q.feedback,
+        recommendedProgramFocus: q.recommendedProgramFocus,
+        feedback: q.feedback,
+        skillTags: Array.isArray(q.skillTags) ? q.skillTags : undefined,
         correctAnswer: q.correctAnswer,
         pointsPossible: typeof q.pointsPossible === 'number' ? q.pointsPossible : undefined,
-        pointsAwarded: typeof q.pointsAwarded === 'number' ? q.pointsAwarded : undefined,
-        feedback: q.feedback,
-        skillTags: Array.isArray(q.skillTags) ? q.skillTags : undefined
+        pointsAwarded: typeof q.pointsAwarded === 'number' ? q.pointsAwarded : undefined
       };
     });
 
     return {
       examTitle: parsed.examTitle || lessonTitle || 'Exam',
       subject: parsed.subject || undefined,
-      detectedStudentName: parsed.detectedStudentName || providedStudentName,
+      detectedStudentName: parsed.detectedStudentName,
       rawText: parsed.rawText,
+      gradeText: parsed.gradeText || undefined,
       overallScore: typeof parsed.overallScore === 'number' ? parsed.overallScore : undefined,
       maxScore: typeof parsed.maxScore === 'number' ? parsed.maxScore : undefined,
+      adviceSummary: normalizeStringArray(parsed.adviceSummary),
+      programRecommendations: normalizeStringArray(parsed.programRecommendations),
       questions: normalizedQuestions
     };
   } catch (error) {
@@ -404,30 +437,40 @@ function fallbackExamAnalysis(lessonTitle?: string): ExamAnalysisResult {
   return {
     examTitle: `${lessonTitle || 'Lesson'} Assessment (Fallback)`,
     subject: lessonTitle || 'General',
-    detectedStudentName: 'Sample Student',
-    overallScore: 75,
-    maxScore: 100,
+    detectedStudentName: 'Élève inconnu',
+    gradeText: '15/20',
+    overallScore: 15,
+    maxScore: 20,
     rawText: 'Fallback analysis used due to missing AI credentials.',
+    adviceSummary: [
+      'Revoir les fractions équivalentes pour gagner en vitesse.',
+      'Soigner la justification écrite pour les problèmes longs.'
+    ],
+    programRecommendations: ['Fractions', 'Résolution de problèmes'],
     questions: [
       {
         number: 1,
-        questionText: 'Explain the main concept from the lesson.',
+        questionText: 'Explique le concept principal de la leçon.',
         studentAnswer: 'Student answer placeholder',
-        correctAnswer: 'Key points of the lesson concept explained with examples.',
+        teacherComment: 'Bonne compréhension globale.',
+        improvementAdvice: 'Ajouter un exemple concret pour valider la notion.',
+        recommendedProgramFocus: 'Concepts clés',
+        feedback: 'Réponse correcte mais incomplète.',
+        skillTags: ['compréhension'],
         pointsPossible: 10,
-        pointsAwarded: 7,
-        feedback: 'Answer captured part of the idea; reinforce with concrete example.',
-        skillTags: ['conceptual_understanding']
+        pointsAwarded: 7
       },
       {
         number: 2,
-        questionText: 'Apply the concept to a new situation.',
+        questionText: 'Applique le concept à une nouvelle situation.',
         studentAnswer: 'Student attempt placeholder',
-        correctAnswer: 'Steps showing transfer of learning to the new situation.',
+        teacherComment: 'Raisonnement pertinent.',
+        improvementAdvice: 'Décrire toutes les étapes du raisonnement.',
+        recommendedProgramFocus: 'Problèmes ouverts',
+        feedback: 'Bonne intuition, détaille davantage.',
+        skillTags: ['application', 'problème'],
         pointsPossible: 10,
-        pointsAwarded: 8,
-        feedback: 'Solid reasoning; add more detail to final explanation.',
-        skillTags: ['application', 'problem_solving']
+        pointsAwarded: 8
       }
     ]
   };

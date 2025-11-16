@@ -48,7 +48,7 @@ export default function CreateProgramPage() {
           onClick={() => router.back()}
           className="text-gray-500 hover:text-gray-700 mb-8 text-sm"
         >
-          ← Back
+          ← Retour
         </button>
 
         <div className="bg-white rounded-2xl p-12 shadow-lg">
@@ -56,7 +56,7 @@ export default function CreateProgramPage() {
             <div className="w-20 h-20 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
               <span className="text-4xl">📚</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-800">New Program</h1>
+            <h1 className="text-2xl font-bold text-gray-800">Nouveau programme</h1>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -66,7 +66,7 @@ export default function CreateProgramPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Program name"
+                placeholder="Nom du programme"
                 className="w-full px-4 py-4 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
                 disabled={isCreating}
                 autoFocus
@@ -80,14 +80,14 @@ export default function CreateProgramPage() {
                 className="flex-1 px-6 py-4 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
                 disabled={isCreating}
               >
-                Cancel
+                Annuler
               </button>
               <button
                 type="submit"
                 disabled={isCreating || !name.trim()}
                 className="flex-1 px-6 py-4 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreating ? 'Creating...' : 'Create'}
+                {isCreating ? 'Création…' : 'Créer'}
               </button>
             </div>
           </form>

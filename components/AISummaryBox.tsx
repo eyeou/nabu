@@ -41,12 +41,22 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
     }
   };
 
+  const subjectLabels: Record<string, string> = {
+    strengths: 'Points forts',
+    weaknesses: 'Points faibles',
+    recommendations: 'Recommandations'
+  };
+
+  const getSubjectLabel = (subject: string) => {
+    return subjectLabels[subject.toLowerCase()] || subject.charAt(0).toUpperCase() + subject.slice(1);
+  };
+
   if (loading) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            AI Student Analysis
+            Analyse IA de l’élève
             <div className="animate-pulse w-4 h-4 bg-blue-400 rounded-full"></div>
           </CardTitle>
         </CardHeader>
@@ -72,15 +82,14 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
     return (
       <Card>
         <CardHeader>
-          <CardTitle>AI Student Analysis</CardTitle>
+          <CardTitle>Analyse IA de l’élève</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
             <div className="text-4xl mb-3">🤖</div>
-            <p className="text-gray-500 mb-4">No AI analysis available yet</p>
+            <p className="text-gray-500 mb-4">Aucune analyse IA pour le moment</p>
             <p className="text-xs text-gray-400 mt-2">
-              AI analysis will appear automatically after the student&apos;s test copy
-              is uploaded and processed.
+              L’analyse apparaîtra automatiquement dès qu’une copie de l’élève aura été importée et traitée.
             </p>
           </div>
         </CardContent>
@@ -91,7 +100,7 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI Student Analysis</CardTitle>
+        <CardTitle>Analyse IA de l’élève</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         {summaries.map(summary => {
@@ -107,10 +116,10 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
                   variant="outline"
                   className={getSummaryColor(summary.subject)}
                 >
-                  {summary.subject.charAt(0).toUpperCase() + summary.subject.slice(1)}
+                  {getSubjectLabel(summary.subject)}
                 </Badge>
                 <span className="text-xs text-gray-400">
-                  Updated {new Date(summary.updatedAt).toLocaleDateString()}
+                  Mis à jour le {new Date(summary.updatedAt).toLocaleDateString()}
                 </span>
               </div>
               
@@ -128,7 +137,7 @@ export default function AISummaryBox({ summaries, loading = false }: AISummaryBo
         
         <div className="pt-4 border-t border-gray-100">
           <Button variant="outline" size="sm" className="w-full">
-            Regenerate Analysis
+            Relancer l’analyse
           </Button>
         </div>
       </CardContent>

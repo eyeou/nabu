@@ -14,7 +14,7 @@ Ce document donne une vue d’ensemble du produit, de ses objectifs pédagogique
 
 - **Pages principales** :  
   - `/dashboard` → aperçu (classes/programmes).  
-  - `/programs/[programId]` → interface de création de leçons + modal d’upload multi-pages pour les copies.  
+  - `/programs/[programId]` → interface de création de leçons + modal d’upload multi-pages (détection auto des élèves via le nom présent sur les copies).  
   - `/classes/[classId]` → liste des élèves avec accès rapide aux fiches détaillées.  
   - `/students/[studentId]` → vue élève riche : progression, résumé IA, bloc Examens récents connecté au pipeline.  
 - **Composants UI** : `ProgramGraph`, `AISummaryBox`, `StudentCard`, Tailwind + Radix + UI primitives.  
@@ -24,7 +24,7 @@ Ce document donne une vue d’ensemble du produit, de ses objectifs pédagogique
 
 - **API routes principales** :  
   - `/api/programs`, `/api/classes`, `/api/students` pour CRUD.  
-  - `/api/exams/upload` : orchestration de l’upload → OCR + correction → ingestion en BD → régénération de résumés IA.  
+- `/api/exams/upload` : orchestration de l’upload → OCR + détection du nom/note → regroupement par élève (création auto) → ingestion en BD → régénération de résumés IA.  
   - `/api/summaries/generate` : fallback pour recalculer un résumé depuis enseignement/assessments.  
 - **Auth** : JWT (`lib/auth.ts`), routines pour login/signup, middleware dans les routes.  
 - **Base de données** : PostgreSQL (Supabase). Prisma gère les tables `Teacher`, `Program`, `Lesson`, `Class`, `Student`, `StudentLessonStatus`, `StudentSummary`, `Assessment`, `StudentAssessment`.  
@@ -33,14 +33,14 @@ Ce document donne une vue d’ensemble du produit, de ses objectifs pédagogique
 ### Intelligence artificielle
 
 - **Librairie principale** : `lib/ai.ts` encapsule les appels vers Blackbox (OpenAI compatible) pour :  
-  - `analyzeAndGradeExamImage` (vision/ocr, génère questions corrigées).  
+  - `analyzeAndGradeExamImage` (vision/OCR, extrait nom + note détectée + conseils/programme + questions détaillées).  
   - `generateStudentAnalysisFromLLM` (prompt français strict pour produire `strengths`, `weaknesses`, `recommendations` à partir des copies).  
   - Fusion multi-pages, fallback sans clé, extraction de texte, reformatage JSON.  
 - **Enchaînement** :  
   1. L’API d’upload appelle `Blackbox` pour chaque image.  
-  2. Les résultats alimentent `Assessment` et `StudentAssessment`.  
-  3. `StudentLessonStatus` est mis à jour, puis `generateStudentAnalysisFromLLM` produit le résumé final.  
-  4. L’UI affiche la version approuvée et les corrections questions par questions.
+  2. Les résultats sont regroupés par élève (détection du nom) puis alimentent `Assessment` et `StudentAssessment`.  
+  3. `StudentLessonStatus` est mis à jour à partir de la note détectée + des conseils, puis `generateStudentAnalysisFromLLM` produit le résumé final.  
+  4. L’UI affiche la version approuvée, la note saisie sur la copie et les conseils question par question.
 
 ### Workflow de contribution
 
@@ -59,8 +59,8 @@ Ce document donne une vue d’ensemble du produit, de ses objectifs pédagogique
 ## À quoi faire attention
 
 - Ne pas appeler `/api/summaries/generate` manuellement : c’est la fonction finale du pipeline d’upload.  
-- Les prompts LLM sont conçus pour produire du français strict et mentionner uniquement les erreurs observées dans les copies. Modifier les messages avec précaution.  
-- Le champ `gradedResponses` est directement affiché dans les cartes “Examens récents”/modal classe. Il doit rester JSON similaire à ce qui retourne `analyzeAndGradeExamImage`.
+- Les prompts LLM sont conçus pour produire du français strict et mentionner uniquement les erreurs observées dans les copies (pas de recalcul de notes). Modifier les messages avec précaution.  
+- Le champ `gradedResponses` est directement affiché dans les cartes “Examens récents”/modal classe. Il doit conserver la structure `{ gradeText, adviceSummary[], programRecommendations[], questions[] }` renvoyée par `analyzeAndGradeExamImage`.
 
 À compléter si vous ajoutez : 
 - de nouveaux endpoints (ex. upload via Supabase Storage) → documenter ici.  

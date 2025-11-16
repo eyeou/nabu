@@ -6,9 +6,9 @@ import {
   generateStudentAnalysisFromLLM,
   StudentAnalysisOutput,
   StudentForAnalysis,
-  ExamAnalysisResult,
-  ExamQuestionAnalysis
+  ExamAnalysisResult
 } from '@/lib/ai';
+import { parseCopyInsights } from '@/lib/copy-insights';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,18 +32,14 @@ export async function POST(request: NextRequest) {
       imageDataUrl,
       imageUrls,
       imageDataUrls,
-      studentId,
-      classId,
-      providedStudentName
+      classId
     }: {
       lessonId?: string;
       imageUrl?: string;
       imageDataUrl?: string;
       imageUrls?: string[];
       imageDataUrls?: string[];
-      studentId?: string;
       classId?: string;
-      providedStudentName?: string;
     } = body;
 
     if (!lessonId) {
@@ -69,7 +65,7 @@ export async function POST(request: NextRequest) {
       return new Response(
         JSON.stringify({
           success: false,
-          message: 'Provide either imageUrl or imageDataUrl for the exam photo'
+          message: 'Provide at least one exam photo (imageUrl or imageDataUrl)'
         }),
         { status: 400 }
       );
@@ -102,88 +98,172 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const examAnalyses: ExamAnalysisResult[] = [];
+    const analysesByStudent = new Map<
+      string,
+      { displayName: string; analyses: ExamAnalysisResult[]; imageSources: string[] }
+    >();
+    const namelessPages: number[] = [];
+
     for (const [index, source] of imageSources.entries()) {
       console.info(`🧠 Sending exam image page ${index + 1}/${imageSources.length} to AI...`);
       const result = await analyzeAndGradeExamImage({
         imageUrl: source,
-        lessonTitle: lesson.title,
-        providedStudentName
+        lessonTitle: lesson.title
       });
-      examAnalyses.push(result);
-    }
-    const examAnalysis = mergeExamAnalyses(examAnalyses);
-    console.info('✅ AI grading completed');
 
-    let student;
-    try {
-      console.info('👤 Resolving student record...');
-      student = await resolveStudent({
-        teacherId: teacher.teacherId,
-        studentId,
-        possibleName: providedStudentName || examAnalysis.detectedStudentName,
-        classId
-      });
-      console.info(`👤 Student resolved: ${student.name} (${student.id})`);
-    } catch (studentError) {
-      const errorMessage = mapStudentResolutionError(
-        studentError instanceof Error ? studentError.message : undefined
-      );
-      console.warn('🚫 Unable to resolve student for exam upload:', errorMessage);
+      const detectedName = result.detectedStudentName?.trim();
+      if (!detectedName) {
+        namelessPages.push(index + 1);
+        continue;
+      }
+
+      const normalized = normalizeStudentName(detectedName);
+      const existing = analysesByStudent.get(normalized);
+      if (!existing) {
+        analysesByStudent.set(normalized, {
+          displayName: detectedName,
+          analyses: [result],
+          imageSources: [source]
+        });
+      } else {
+        existing.analyses.push(result);
+        existing.imageSources.push(source);
+      }
+    }
+
+    if (analysesByStudent.size === 0) {
+      console.warn('🚫 No student names detected on uploaded copies');
       return new Response(
         JSON.stringify({
           success: false,
-          message: errorMessage
+          message:
+            'Aucun nom n’a été détecté sur les copies envoyées. Vérifiez que chaque page contient clairement le nom de l’élève.'
         }),
-        { status: 400 }
+        { status: 422 }
       );
     }
 
-    console.info('🗂️ Saving assessment + graded responses...');
-    const assessment = await prisma.assessment.create({
-      data: {
-        lessonId: lesson.id,
-        title: examAnalysis.examTitle || `${lesson.title} Assessment`,
-        description: examAnalysis.subject || null,
-        sourceImageUrl: imageSources.join(','),
-        extractedData: {
-          rawText: examAnalysis.rawText,
-          questions: examAnalysis.questions
+    if (namelessPages.length > 0) {
+      console.warn('⚠️ Missing names on some pages:', namelessPages);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: `Impossible d'affecter certaines pages (numéros: ${namelessPages.join(
+            ', '
+          )}). Assurez-vous que le nom figure sur chaque page.`
+        }),
+        { status: 422 }
+      );
+    }
+
+    const processedStudents: Array<{
+      studentId: string;
+      studentName: string;
+      wasCreated: boolean;
+      gradeText?: string;
+      assessmentId: string;
+      studentAssessmentId: string;
+      summaries: Awaited<ReturnType<typeof upsertSummaries>>;
+    }> = [];
+
+    for (const [, group] of analysesByStudent.entries()) {
+      const mergedAnalysis = mergeExamAnalyses(group.analyses);
+
+      let resolvedStudent: Awaited<ReturnType<typeof resolveStudent>>;
+      try {
+        console.info(`👤 Resolving student record for ${group.displayName}...`);
+        resolvedStudent = await resolveStudent({
+          teacherId: teacher.teacherId,
+          possibleName: mergedAnalysis.detectedStudentName,
+          classId
+        });
+        console.info(
+          `👤 Student resolved: ${resolvedStudent.student.name} (${resolvedStudent.student.id}) ${
+            resolvedStudent.wasCreated ? '[created]' : ''
+          }`
+        );
+      } catch (studentError) {
+        const errorMessage = mapStudentResolutionError(
+          studentError instanceof Error ? studentError.message : undefined
+        );
+        console.warn('🚫 Unable to resolve student for exam upload:', errorMessage);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: `${group.displayName}: ${errorMessage}`
+          }),
+          { status: 400 }
+        );
+      }
+
+      const student = resolvedStudent.student;
+      console.info('🗂️ Saving assessment + copy insights...');
+      const assessment = await prisma.assessment.create({
+        data: {
+          lessonId: lesson.id,
+          title: mergedAnalysis.examTitle || `${lesson.title} Assessment`,
+          description: mergedAnalysis.subject || null,
+          sourceImageUrl: group.imageSources.join(','),
+          extractedData: {
+            rawText: mergedAnalysis.rawText,
+            gradeText: mergedAnalysis.gradeText,
+            adviceSummary: mergedAnalysis.adviceSummary,
+            programRecommendations: mergedAnalysis.programRecommendations,
+            questions: mergedAnalysis.questions
+          }
         }
-      }
-    });
+      });
 
-    const studentAssessment = await prisma.studentAssessment.create({
-      data: {
-        assessmentId: assessment.id,
+      const gradedResponsesPayload = {
+        gradeText: mergedAnalysis.gradeText,
+        adviceSummary: mergedAnalysis.adviceSummary ?? [],
+        programRecommendations: mergedAnalysis.programRecommendations ?? [],
+        questions: mergedAnalysis.questions
+      };
+
+      const studentAssessment = await prisma.studentAssessment.create({
+        data: {
+          assessmentId: assessment.id,
+          studentId: student.id,
+          detectedStudentName: mergedAnalysis.detectedStudentName,
+          overallScore: mergedAnalysis.overallScore ?? null,
+          maxScore: mergedAnalysis.maxScore ?? null,
+          gradedResponses: gradedResponsesPayload
+        }
+      });
+
+      console.info('📊 Updating lesson status with detected grade...');
+      await upsertStudentLessonStatus({
         studentId: student.id,
-        detectedStudentName: examAnalysis.detectedStudentName,
-        overallScore: examAnalysis.overallScore ?? null,
-        maxScore: examAnalysis.maxScore ?? null,
-        gradedResponses: examAnalysis.questions
-      }
-    });
+        lessonId: lesson.id,
+        examAnalysis: mergedAnalysis
+      });
 
-    console.info('📊 Updating lesson status with exam score...');
-    await upsertStudentLessonStatus({
-      studentId: student.id,
-      lessonId: lesson.id,
-      examAnalysis
-    });
+      console.info('🧾 Regenerating AI summary for student...');
+      const summaries = await regenerateStudentSummaries(student.id);
 
-    console.info('🧾 Regenerating AI summary for student...');
-    const summaries = await regenerateStudentSummaries(student.id);
+      processedStudents.push({
+        studentId: student.id,
+        studentName: student.name,
+        wasCreated: resolvedStudent.wasCreated,
+        gradeText: mergedAnalysis.gradeText,
+        assessmentId: assessment.id,
+        studentAssessmentId: studentAssessment.id,
+        summaries
+      });
+    }
+
     console.info('✨ Exam upload pipeline completed successfully');
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
-          assessment,
-          studentAssessment,
-          summaries
+          processedStudents
         },
-        message: 'Exam processed successfully'
+        message: `Copies analysées pour ${processedStudents.length} élève${
+          processedStudents.length > 1 ? 's' : ''
+        }.`
       }),
       { status: 201 }
     );
@@ -205,47 +285,35 @@ export async function POST(request: NextRequest) {
 
 async function resolveStudent(params: {
   teacherId: string;
-  studentId?: string;
-  possibleName?: string;
+  possibleName?: string | null;
   classId?: string;
-}) {
-  const { teacherId, studentId, possibleName, classId } = params;
+}): Promise<{ student: { id: string; name: string }; wasCreated: boolean }> {
+  const { teacherId, possibleName, classId } = params;
 
-  if (studentId) {
-    const existingStudent = await prisma.student.findFirst({
-      where: {
-        id: studentId,
-        class: { teacherId }
-      }
-    });
-
-    if (!existingStudent) {
-      throw new Error('STUDENT_NOT_FOUND_OR_UNAUTHORIZED');
-    }
-
-    return existingStudent;
+  if (!possibleName || !possibleName.trim()) {
+    throw new Error('DETECTED_NAME_REQUIRED');
   }
 
-  if (possibleName) {
-    const matchedStudent = await prisma.student.findFirst({
-      where: {
-        name: {
-          equals: possibleName,
-          mode: 'insensitive'
-        },
-        class: {
-          teacherId
-        }
-      }
-    });
+  const cleanedName = possibleName.trim();
 
-    if (matchedStudent) {
-      return matchedStudent;
+  const matchedStudent = await prisma.student.findFirst({
+    where: {
+      name: {
+        equals: cleanedName,
+        mode: 'insensitive'
+      },
+      class: {
+        teacherId
+      }
     }
+  });
+
+  if (matchedStudent) {
+    return { student: matchedStudent, wasCreated: false };
   }
 
   if (!classId) {
-    throw new Error('STUDENT_NOT_FOUND_AND_NO_CLASS');
+    throw new Error('CLASS_ID_REQUIRED_FOR_CREATION');
   }
 
   const classRecord = await prisma.class.findFirst({
@@ -259,31 +327,35 @@ async function resolveStudent(params: {
     throw new Error('CLASS_NOT_FOUND_OR_UNAUTHORIZED');
   }
 
-  if (!possibleName) {
-    throw new Error('MISSING_STUDENT_NAME_FOR_CREATION');
-  }
-
-  return prisma.student.create({
+  const createdStudent = await prisma.student.create({
     data: {
       classId: classRecord.id,
-      name: possibleName.trim()
+      name: cleanedName
     }
   });
+
+  return { student: createdStudent, wasCreated: true };
 }
 
 function mapStudentResolutionError(code?: string) {
   switch (code) {
-    case 'STUDENT_NOT_FOUND_OR_UNAUTHORIZED':
-      return 'Student not found or you do not have access to this student.';
-    case 'STUDENT_NOT_FOUND_AND_NO_CLASS':
-      return 'No matching student found. Please specify a classId to create one.';
+    case 'DETECTED_NAME_REQUIRED':
+      return 'Nom manquant : vérifiez que chaque copie contient clairement le nom de l’élève.';
+    case 'CLASS_ID_REQUIRED_FOR_CREATION':
+      return 'Sélectionnez une classe pour créer automatiquement les élèves détectés.';
     case 'CLASS_NOT_FOUND_OR_UNAUTHORIZED':
       return 'Class not found or you do not have access to this class.';
-    case 'MISSING_STUDENT_NAME_FOR_CREATION':
-      return 'Please provide studentName so a new student can be created.';
     default:
       return 'Unable to resolve student for this exam upload.';
   }
+}
+
+function normalizeStudentName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 async function upsertStudentLessonStatus(params: {
@@ -293,15 +365,25 @@ async function upsertStudentLessonStatus(params: {
 }) {
   const { studentId, lessonId, examAnalysis } = params;
 
+  const llmScore =
+    typeof examAnalysis.overallScore === 'number' && typeof examAnalysis.maxScore === 'number'
+      ? {
+          totalScore: examAnalysis.overallScore,
+          maxScore: examAnalysis.maxScore
+        }
+      : null;
+
+  const extractedScore = llmScore ?? extractScoresFromGradeText(examAnalysis.gradeText);
+
   const totalScore =
-    typeof examAnalysis.overallScore === 'number' ? examAnalysis.overallScore : undefined;
+    extractedScore && extractedScore.maxScore > 0 ? extractedScore.totalScore : undefined;
   const maxScore =
-    typeof examAnalysis.maxScore === 'number' && examAnalysis.maxScore > 0
-      ? examAnalysis.maxScore
+    extractedScore && extractedScore.maxScore > 0 ? extractedScore.maxScore : undefined;
+
+  const percent =
+    typeof totalScore === 'number' && typeof maxScore === 'number' && maxScore > 0
+      ? totalScore / maxScore
       : undefined;
-  const percent = typeof totalScore === 'number' && typeof maxScore === 'number'
-    ? totalScore / maxScore
-    : undefined;
 
   const masteryLevel = (() => {
     if (!percent && percent !== 0) return 'in_progress';
@@ -311,20 +393,20 @@ async function upsertStudentLessonStatus(params: {
     return 'not_started';
   })();
 
-  const incorrectNotes = examAnalysis.questions
-    .filter(q => (q.pointsAwarded ?? q.pointsPossible ?? 0) < (q.pointsPossible ?? 0))
-    .map(
-      q =>
-        `Q${q.number}: ${
-          q.feedback ||
-          'Needs review. Correct answer: ' + (q.correctAnswer || 'See reference solution.')
-        }`
-    )
+  const focusNotes = examAnalysis.questions
+    .map(question => ({
+      number: question.number,
+      note: question.improvementAdvice || question.teacherComment || question.feedback
+    }))
+    .filter(item => item.note)
+    .slice(0, 5)
+    .map(item => `Q${item.number}: ${item.note}`)
     .join(' | ');
 
   const statusNotes = [
-    `Auto-generated from exam upload on ${new Date().toLocaleDateString()}.`,
-    incorrectNotes || 'All questions answered correctly.'
+    `Analyse automatisée du ${new Date().toLocaleDateString()}.`,
+    examAnalysis.gradeText ? `Note détectée : ${examAnalysis.gradeText}.` : null,
+    focusNotes || examAnalysis.adviceSummary?.[0] || 'Conseils disponibles dans la fiche élève.'
   ]
     .filter(Boolean)
     .join(' ');
@@ -352,6 +434,32 @@ async function upsertStudentLessonStatus(params: {
       createdAt: new Date()
     }
   });
+}
+
+function extractScoresFromGradeText(
+  gradeText?: string | null
+): { totalScore: number; maxScore: number } | null {
+  if (!gradeText) return null;
+  const normalized = gradeText.replace(',', '.');
+
+  const fractionMatch = normalized.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+  if (fractionMatch) {
+    const totalScore = parseFloat(fractionMatch[1]);
+    const maxScore = parseFloat(fractionMatch[2]);
+    if (!Number.isNaN(totalScore) && !Number.isNaN(maxScore) && maxScore > 0) {
+      return { totalScore, maxScore };
+    }
+  }
+
+  const percentMatch = normalized.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (percentMatch) {
+    const percent = parseFloat(percentMatch[1]);
+    if (!Number.isNaN(percent)) {
+      return { totalScore: percent, maxScore: 100 };
+    }
+  }
+
+  return null;
 }
 
 async function regenerateStudentSummaries(studentId: string) {
@@ -411,24 +519,28 @@ async function regenerateStudentSummaries(studentId: string) {
         updatedAt: ls.updatedAt?.toISOString()
       })) ?? [],
     assessments:
-      student.studentAssessments?.map(sa => ({
-        examTitle: sa.assessment?.title || 'Assessment',
-        lessonTitle: sa.assessment?.lesson?.title,
-        overallScore: sa.overallScore ?? undefined,
-        maxScore: sa.maxScore ?? undefined,
-        questions: Array.isArray(sa.gradedResponses)
-          ? (sa.gradedResponses as ExamQuestionAnalysis[]).map((question, index) => ({
-              questionText: question.questionText || `Question ${index + 1}`,
-              studentAnswer: question.studentAnswer,
-              correctAnswer: question.correctAnswer,
-              pointsAwarded:
-                typeof question.pointsAwarded === 'number' ? question.pointsAwarded : undefined,
-              pointsPossible:
-                typeof question.pointsPossible === 'number' ? question.pointsPossible : undefined,
-              feedback: question.feedback
-            }))
-          : []
-      })) ?? []
+      student.studentAssessments?.map(sa => {
+        const insights = parseCopyInsights(sa.gradedResponses);
+        return {
+          examTitle: sa.assessment?.title || 'Assessment',
+          lessonTitle: sa.assessment?.lesson?.title,
+          overallScore: sa.overallScore ?? undefined,
+          maxScore: sa.maxScore ?? undefined,
+          gradeText: insights.gradeText,
+          adviceSummary: insights.adviceSummary,
+          programRecommendations: insights.programRecommendations,
+          questions: insights.questions.map((question, index) => ({
+            number: typeof question.number === 'number' ? question.number : index + 1,
+            questionText: question.questionText || `Question ${index + 1}`,
+            studentAnswer: question.studentAnswer,
+            teacherComment: question.teacherComment,
+            improvementAdvice: question.improvementAdvice,
+            recommendedProgramFocus: question.recommendedProgramFocus,
+            feedback: question.feedback,
+            skillTags: question.skillTags
+          }))
+        };
+      }) ?? []
   };
 
   const analysis = await generateStudentAnalysisFromLLM(studentForAnalysis);
@@ -472,14 +584,35 @@ function mergeExamAnalyses(analyses: ExamAnalysisResult[]): ExamAnalysisResult {
   const mergedQuestions = analyses.flatMap(analysis => analysis.questions);
   const declaredOverallScore = analyses.find(a => typeof a.overallScore === 'number')?.overallScore;
   const declaredMaxScore = analyses.find(a => typeof a.maxScore === 'number')?.maxScore;
+  const detectedName = analyses.find(a => a.detectedStudentName)?.detectedStudentName;
+  const gradeText = analyses.find(a => a.gradeText)?.gradeText;
+  const combinedAdvice = Array.from(
+    new Set(
+      analyses
+        .flatMap(a => a.adviceSummary ?? [])
+        .map(advice => advice.trim())
+        .filter(Boolean)
+    )
+  );
+  const combinedProgramRecommendations = Array.from(
+    new Set(
+      analyses
+        .flatMap(a => a.programRecommendations ?? [])
+        .map(rec => rec.trim())
+        .filter(Boolean)
+    )
+  );
 
   return {
     examTitle: analyses[0].examTitle,
     subject: analyses.find(a => a.subject)?.subject,
-    detectedStudentName: analyses.find(a => a.detectedStudentName)?.detectedStudentName,
+    detectedStudentName: detectedName,
     rawText: analyses.map(a => a.rawText).filter(Boolean).join('\n---\n'),
     overallScore: declaredOverallScore ?? analyses[0].overallScore,
     maxScore: declaredMaxScore ?? analyses[0].maxScore,
+    gradeText,
+    adviceSummary: combinedAdvice,
+    programRecommendations: combinedProgramRecommendations,
     questions: mergedQuestions
   };
 }

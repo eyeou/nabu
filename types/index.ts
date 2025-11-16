@@ -8,6 +8,7 @@ export interface Teacher {
   updatedAt: Date;
   programs?: Program[];
   classes?: Class[];
+  comments?: StudentComment[];
 }
 
 export interface Program {
@@ -68,6 +69,7 @@ export interface Student {
   lessonStatuses?: StudentLessonStatus[];
   summaries?: StudentSummary[];
   studentAssessments?: StudentAssessment[];
+  comments?: StudentComment[];
 }
 
 export interface StudentLessonStatus {
@@ -92,6 +94,16 @@ export interface StudentSummary {
   generatedAt: Date;
   updatedAt: Date;
   student?: Student;
+}
+
+export interface StudentComment {
+  id: string;
+  studentId: string;
+  teacherId: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+  teacher?: Teacher;
 }
 
 export interface Assessment {

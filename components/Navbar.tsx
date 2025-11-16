@@ -14,7 +14,7 @@ import {
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [teacherName] = useState("Teacher"); // This would come from auth context
+  const [teacherName] = useState("Professeur"); // Cette valeur provient normalement du contexte d'authentification
 
   const isActive = (path: string) => {
     return pathname.startsWith(path);
@@ -58,7 +58,7 @@ export default function Navbar() {
                     : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                Dashboard
+                Tableau de bord
               </Link>
             </div>
           </div>
@@ -81,18 +81,18 @@ export default function Navbar() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem className="flex items-center space-x-2">
                   <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-                  <span>Profile Settings</span>
+                  <span>Paramètres du profil</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem className="flex items-center space-x-2">
                   <div className="w-4 h-4 bg-gray-400 rounded-full"></div>
-                  <span>Help & Support</span>
+                  <span>Aide & support</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   onClick={handleLogout}
                   className="flex items-center space-x-2 text-red-600 focus:text-red-600"
                 >
                   <div className="w-4 h-4 bg-red-500 rounded-full"></div>
-                  <span>Sign Out</span>
+                  <span>Se déconnecter</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

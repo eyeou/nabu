@@ -47,7 +47,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400">Chargement…</div>
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function DashboardPage() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Programs
+              Programmes
             </button>
             <button
               onClick={() => router.push('/dashboard?view=classes')}
@@ -87,23 +87,23 @@ export default function DashboardPage() {
           <div>
             {/* Programs View */}
             <div className="flex justify-between items-center mb-8">
-              <h1 className="text-3xl font-bold text-gray-800">Programs</h1>
+              <h1 className="text-3xl font-bold text-gray-800">Programmes</h1>
               <button
                 onClick={handleCreateProgram}
                 className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
               >
-                + New Program
+                + Nouveau programme
               </button>
             </div>
 
             {programs.length === 0 ? (
               <div className="text-center py-20">
-                <div className="text-gray-400 mb-4">No programs yet</div>
+                <div className="text-gray-400 mb-4">Aucun programme pour le moment</div>
                 <button
                   onClick={handleCreateProgram}
                   className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                 >
-                  Create First Program
+                  Créer le premier programme
                 </button>
               </div>
             ) : (
@@ -152,18 +152,18 @@ export default function DashboardPage() {
                 onClick={handleCreateClass}
                 className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
               >
-                + New Class
+                + Nouvelle classe
               </button>
             </div>
 
             {classes.length === 0 ? (
               <div className="text-center py-20">
-                <div className="text-gray-400 mb-4">No classes yet</div>
+                <div className="text-gray-400 mb-4">Aucune classe pour le moment</div>
                 <button
                   onClick={handleCreateClass}
                   className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
                 >
-                  Create First Class
+                  Créer la première classe
                 </button>
               </div>
             ) : (
@@ -194,7 +194,7 @@ export default function DashboardPage() {
                     </h3>
                     
                     <p className="text-sm text-gray-500">
-                      {cls.students?.length || 0} students
+                      {cls.students?.length || 0} élèves
                     </p>
                   </button>
                 ))}
