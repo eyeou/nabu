@@ -276,13 +276,13 @@ function mapStudentResolutionError(code?: string) {
     case 'STUDENT_NOT_FOUND_OR_UNAUTHORIZED':
       return 'Student not found or you do not have access to this student.';
     case 'STUDENT_NOT_FOUND_AND_NO_CLASS':
-      return 'No matching student found. Please specify a classId to create one.';
+      return 'No matching student found. Please select a class to create the student automatically.';
     case 'CLASS_NOT_FOUND_OR_UNAUTHORIZED':
       return 'Class not found or you do not have access to this class.';
     case 'MISSING_STUDENT_NAME_FOR_CREATION':
-      return 'Please provide studentName so a new student can be created.';
+      return 'AI could not detect a student name on this exam. Please ensure the student\'s name is clearly written on the paper and try again.';
     default:
-      return 'Unable to resolve student for this exam upload.';
+      return 'Unable to resolve student for this exam upload. Please ensure the student\'s name is visible on the exam.';
   }
 }
 

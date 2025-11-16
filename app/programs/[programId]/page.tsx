@@ -21,8 +21,6 @@ export default function ProgramPage() {
   const [classes, setClasses] = useState<ClassWithStudents[]>([]);
   const [classesLoading, setClassesLoading] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
-  const [studentNameInput, setStudentNameInput] = useState('');
 
   const [examFiles, setExamFiles] = useState<File[]>([]);
   const [examPreviewUrls, setExamPreviewUrls] = useState<string[]>([]);
@@ -101,25 +99,8 @@ export default function ProgramPage() {
     setGeneratedSummaries([]);
   };
 
-  const studentsForSelectedClass = useMemo(() => {
-    if (!selectedClassId) return [];
-    return classes.find(cls => cls.id === selectedClassId)?.students || [];
-  }, [classes, selectedClassId]);
-
   const handleClassChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setSelectedClassId(event.target.value);
-    setSelectedStudentId('');
-    setStudentNameInput('');
-  };
-
-  const handleStudentChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    setSelectedStudentId(event.target.value);
-    if (event.target.value) {
-      const student = studentsForSelectedClass.find(s => s.id === event.target.value);
-      setStudentNameInput(student?.name || '');
-    } else {
-      setStudentNameInput('');
-    }
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -158,18 +139,10 @@ export default function ProgramPage() {
       return;
     }
 
-    if (!selectedStudentId && !selectedClassId) {
+    if (!selectedClassId) {
       setUploadMessage({
         type: 'error',
-        text: 'Pick a class (and optionally an existing student) before uploading.'
-      });
-      return;
-    }
-
-    if (!selectedStudentId && !studentNameInput.trim()) {
-      setUploadMessage({
-        type: 'error',
-        text: 'Provide a student name so we can create or link the student.'
+        text: 'Please select a class. The AI will automatically detect student names from the exams.'
       });
       return;
     }
@@ -187,16 +160,14 @@ export default function ProgramPage() {
         body: JSON.stringify({
           lessonId: selectedLesson.id,
           imageDataUrls,
-          classId: selectedClassId || undefined,
-          studentId: selectedStudentId || undefined,
-          providedStudentName: studentNameInput?.trim() || undefined
+          classId: selectedClassId
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setUploadMessage({ type: 'success', text: data.message || 'Exam processed successfully!' });
+        setUploadMessage({ type: 'success', text: data.message || 'Exam processed successfully! AI detected student and generated feedback.' });
         setGeneratedSummaries(data.data?.summaries || []);
         setExamFiles([]);
         setExamPreviewUrls([]);
@@ -311,83 +282,51 @@ export default function ProgramPage() {
 
               <div className="border rounded-xl p-5 space-y-4 bg-gray-50">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Upload student exam copy</h3>
+                  <h3 className="text-lg font-semibold text-gray-800">Upload Student Exams</h3>
                   <p className="text-sm text-gray-500">
-                    Capture or upload the student&apos;s test page. The AI will read it, correct it, and
-                    refresh that student&apos;s profile automatically.
+                    Upload multiple exam papers. The AI will automatically detect each student&apos;s name, 
+                    grade the exam, and generate personalized feedback for each student.
                   </p>
                 </div>
 
                 <div className="grid gap-4">
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
-                      <select
-                        value={selectedClassId}
-                        onChange={handleClassChange}
-                        className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-400"
-                      >
-                        <option value="">
-                          {classesLoading ? 'Loading classes...' : 'Select a class'}
-                        </option>
-                        {classes.map(cls => (
-                          <option key={cls.id} value={cls.id}>
-                            {cls.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Student (optional)
-                      </label>
-                      <select
-                        value={selectedStudentId}
-                        onChange={handleStudentChange}
-                        disabled={!selectedClassId}
-                        className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-400 disabled:bg-gray-100"
-                      >
-                        <option value="">
-                          {selectedClassId ? 'Link an existing student' : 'Select class first'}
-                        </option>
-                        {studentsForSelectedClass.map(student => (
-                          <option key={student.id} value={student.id}>
-                            {student.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Student name (required if new)
+                      Class <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
-                      value={studentNameInput}
-                      onChange={event => setStudentNameInput(event.target.value)}
-                      placeholder="Enter the student&apos;s full name"
-                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400"
-                    />
+                    <select
+                      value={selectedClassId}
+                      onChange={handleClassChange}
+                      className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="">
+                        {classesLoading ? 'Loading classes...' : 'Select a class'}
+                      </option>
+                      {classes.map(cls => (
+                        <option key={cls.id} value={cls.id}>
+                          {cls.name}
+                        </option>
+                      ))}
+                    </select>
                     <p className="text-xs text-gray-400 mt-1">
-                      If you didn&apos;t select an existing student, we&apos;ll create one inside that class.
+                      Select the class these exams belong to. The AI will match students automatically.
                     </p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Exam photos (multi-page supported)
+                      Exam Photos <span className="text-red-500">*</span>
                     </label>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex flex-col items-center gap-3 text-center w-full">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleFileChange}
-                        className="text-sm"
-                      />
+                      <div className="w-full">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleFileChange}
+                          className="text-sm w-full"
+                        />
+                      </div>
                       {examPreviewUrls.length > 0 && (
                         <div className="grid grid-cols-2 gap-2 w-full">
                           {examPreviewUrls.map((url, index) => (
@@ -400,9 +339,11 @@ export default function ProgramPage() {
                           ))}
                         </div>
                       )}
-                      <p className="text-xs text-gray-400">
-                        JPG / PNG / HEIC. Ajoutez toutes les pages de la copie pour une analyse complète.
-                      </p>
+                      <div className="text-xs text-gray-500 space-y-1">
+                        <p>📸 Upload multiple exam papers (JPG / PNG / HEIC)</p>
+                        <p>🤖 AI will automatically detect student names from each paper</p>
+                        <p>📊 Each student will receive personalized feedback</p>
+                      </div>
                     </div>
                   </div>
 
