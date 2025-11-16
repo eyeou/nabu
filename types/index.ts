@@ -63,6 +63,7 @@ export interface Student {
   name: string;
   age?: number;
   avatarUrl?: string;
+  performanceLevel?: number;
   createdAt: Date;
   updatedAt: Date;
   class?: Class;

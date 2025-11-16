@@ -30,3 +30,4 @@ All endpoints require an authenticated teacher and enforce ownership before remo
 3. Attempt a second delete on the same resource to verify the 404/inline error.
 4. Refresh the dashboard to ensure the removed entities no longer appear.
 
+

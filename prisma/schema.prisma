@@ -85,6 +85,7 @@ model Student {
   avatarUrl      String?
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
+  performanceLevel Int                 @default(3)
   lessonStatuses StudentLessonStatus[]
   summaries      StudentSummary[]
   comments       StudentComment[]

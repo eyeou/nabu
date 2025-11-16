@@ -89,11 +89,11 @@ export default function SignupPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-lg">EL</span>
+            <span className="text-white font-bold text-lg">NB</span>
           </div>
           <CardTitle className="text-2xl font-bold">Créer un compte</CardTitle>
           <p className="text-gray-600 text-sm">
-            Commencez à gérer vos élèves avec EduLearn
+            Commencez à gérer vos élèves avec Nabu
           </p>
         </CardHeader>
 

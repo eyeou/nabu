@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "EduLearn - Plateforme de gestion pédagogique",
+  title: "Nabu - Plateforme de gestion pédagogique",
   description:
     "Une plateforme complète pour aider les enseignants à gérer des élèves aux profils variés, créer des parcours et suivre les progrès.",
 };

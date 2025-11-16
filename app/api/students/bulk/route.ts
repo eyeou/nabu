@@ -1,10 +1,12 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getTeacherFromRequest } from '@/lib/auth';
+import { DEFAULT_PERFORMANCE_LEVEL, normalizePerformanceLevel } from '@/lib/student-level';
 
 export interface BulkStudentInput {
   name: string;
   age?: number;
+  performanceLevel?: number;
 }
 
 // POST /api/students/bulk - Create multiple students at once
@@ -80,15 +82,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let studentsWithLevels: Array<{ student: BulkStudentInput; normalizedLevel: number }>;
+    try {
+      studentsWithLevels = students.map((student) => {
+        const normalizedLevel =
+          normalizePerformanceLevel(student.performanceLevel) ?? DEFAULT_PERFORMANCE_LEVEL;
+        return { student, normalizedLevel };
+      });
+    } catch {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Chaque niveau doit être un entier entre 1 et 5.'
+        }),
+        { status: 400 }
+      );
+    }
+
     // Create all students in a transaction
     const createdStudents = await prisma.$transaction(
-      students.map((student) =>
+      studentsWithLevels.map(({ student, normalizedLevel }) =>
         prisma.student.create({
           data: {
             classId,
             name: student.name.trim(),
             age: student.age || null,
-            avatarUrl: null
+            avatarUrl: null,
+            performanceLevel: normalizedLevel
           }
         })
       )

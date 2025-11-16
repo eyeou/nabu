@@ -37,6 +37,17 @@ export async function POST(request: NextRequest) {
         class: {
           select: { teacherId: true, name: true }
         },
+        comments: {
+          include: {
+            teacher: {
+              select: { name: true }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 5
+        },
         lessonStatuses: {
           include: {
             lesson: {
@@ -78,6 +89,12 @@ export async function POST(request: NextRequest) {
           score: ls.score ?? undefined,
           notes: ls.notes ?? null,
           updatedAt: ls.updatedAt?.toISOString()
+        })) ?? [],
+      teacherComments:
+        student.comments?.map(comment => ({
+          content: comment.content,
+          teacherName: comment.teacher?.name ?? undefined,
+          createdAt: comment.createdAt.toISOString()
         })) ?? []
     };
 

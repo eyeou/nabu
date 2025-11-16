@@ -6,6 +6,106 @@ import { Program, Lesson, Class, StudentSummary } from '@/types';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 
+type UploadStatus = 'pending' | 'processing' | 'success' | 'error';
+
+interface UploadStep {
+  id: string;
+  label: string;
+  status: UploadStatus;
+  detail?: string;
+}
+
+const uploadStatusTokens: Record<
+  UploadStatus,
+  {
+    label: string;
+    textColor: string;
+    dotClass: string;
+  }
+> = {
+  pending: {
+    label: 'En attente',
+    textColor: 'text-gray-500',
+    dotClass: 'bg-gray-300'
+  },
+  processing: {
+    label: 'Lecture…',
+    textColor: 'text-blue-600',
+    dotClass: 'bg-blue-500 animate-pulse'
+  },
+  success: {
+    label: 'Validée',
+    textColor: 'text-green-600',
+    dotClass: 'bg-green-500'
+  },
+  error: {
+    label: 'Erreur',
+    textColor: 'text-red-600',
+    dotClass: 'bg-red-500'
+  }
+};
+
+const buildUploadSteps = (files: File[], includeAnalysisStep = false): UploadStep[] => {
+  const timestamp = Date.now();
+  const steps = files.map((file, index) => ({
+    id: `${timestamp}-${index}`,
+    label: file.name?.trim() || `Copie ${index + 1}`,
+    status: 'pending' as UploadStatus
+  }));
+
+  if (includeAnalysisStep && steps.length > 0) {
+    steps.push({
+      id: `${timestamp}-analysis`,
+      label: 'Analyse IA',
+      status: 'pending' as UploadStatus
+    });
+  }
+
+  return steps;
+};
+
+const UploadProgressRing = ({ completed, total }: { completed: number; total: number }) => {
+  const percentage = total === 0 ? 0 : Math.round((completed / total) * 100);
+  const safePercentage = Math.min(100, Math.max(0, percentage));
+  const radius = 34;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (safePercentage / 100) * circumference;
+
+  return (
+    <div className="relative h-20 w-20">
+      <svg className="h-20 w-20 -rotate-90" viewBox="0 0 80 80" aria-hidden="true">
+        <circle
+          className="text-gray-200"
+          stroke="currentColor"
+          strokeWidth="8"
+          fill="transparent"
+          r={radius}
+          cx="40"
+          cy="40"
+        />
+        <circle
+          className="text-blue-500 transition-[stroke-dashoffset] duration-300 ease-out"
+          stroke="currentColor"
+          strokeWidth="8"
+          strokeLinecap="round"
+          fill="transparent"
+          r={radius}
+          cx="40"
+          cy="40"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+        <span className="text-base font-semibold text-gray-800">{safePercentage}%</span>
+        <span className="text-[10px] font-medium text-gray-500">
+          {completed}/{total}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 interface ClassWithStudents extends Class {
   students?: { id: string; name: string; age?: number; avatarUrl?: string | null }[];
 }
@@ -52,6 +152,22 @@ export default function ProgramPage() {
   const [uploadingExam, setUploadingExam] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [processedResults, setProcessedResults] = useState<ProcessedCopyResult[]>([]);
+  const [uploadSteps, setUploadSteps] = useState<UploadStep[]>([]);
+
+  const updateStepStatus = useCallback((stepId: string, status: UploadStatus, detail?: string) => {
+    setUploadSteps(prevSteps =>
+      prevSteps.map(step => (step.id === stepId ? { ...step, status, detail } : step))
+    );
+  }, []);
+
+  const resetUploadUi = useCallback(() => {
+    setExamFiles([]);
+    setExamPreviewUrls(prev => {
+      prev.forEach(url => URL.revokeObjectURL(url));
+      return [];
+    });
+    setUploadSteps([]);
+  }, []);
 
   const fetchProgram = useCallback(async () => {
     try {
@@ -150,10 +266,19 @@ export default function ProgramPage() {
   };
 
   const handleLessonClick = (lesson: Lesson) => {
+    resetUploadUi();
     setSelectedLesson(lesson);
     setUploadMessage(null);
     setProcessedResults([]);
     setLessonDeleteError(null);
+  };
+
+  const handleCloseLessonModal = () => {
+    resetUploadUi();
+    setSelectedLesson(null);
+    setLessonDeleteError(null);
+    setUploadMessage(null);
+    setProcessedResults([]);
   };
 
   const handleDeleteLesson = async (lesson: Lesson) => {
@@ -175,7 +300,7 @@ export default function ProgramPage() {
       if (data.success) {
         setLessons(prev => prev.filter(l => l.id !== lesson.id));
         if (selectedLesson?.id === lesson.id) {
-          setSelectedLesson(null);
+          handleCloseLessonModal();
         }
       } else {
         setLessonDeleteError(data.message || 'Impossible de supprimer cette leçon.');
@@ -201,7 +326,18 @@ export default function ProgramPage() {
     setProcessedResults([]);
 
     const previews = files.map(file => URL.createObjectURL(file));
-    setExamPreviewUrls(previews);
+    setExamPreviewUrls(prev => {
+      prev.forEach(url => URL.revokeObjectURL(url));
+      return previews;
+    });
+
+    if (files.length === 0) {
+      setUploadSteps([]);
+      return;
+    }
+
+    const pendingSteps = buildUploadSteps(files);
+    setUploadSteps(pendingSteps);
   };
 
   const fileToDataUrl = (file: File): Promise<string> => {
@@ -240,9 +376,45 @@ export default function ProgramPage() {
 
     setUploadingExam(true);
     setUploadMessage(null);
+    setProcessedResults([]);
+    const runSteps = buildUploadSteps(examFiles, true);
+    setUploadSteps(runSteps);
+    const fileStepIds = runSteps.slice(0, examFiles.length).map(step => step.id);
+    const analysisStepId = runSteps[runSteps.length - 1]?.id;
 
     try {
-      const imageDataUrls = await Promise.all(examFiles.map(fileToDataUrl));
+      const imageDataUrls: string[] = [];
+
+      for (let i = 0; i < examFiles.length; i += 1) {
+        const stepId = runSteps[i]?.id;
+        if (stepId) {
+          updateStepStatus(stepId, 'processing', 'Lecture de la copie…');
+        }
+
+        try {
+          const dataUrl = await fileToDataUrl(examFiles[i]);
+          imageDataUrls.push(dataUrl);
+          if (stepId) {
+            updateStepStatus(stepId, 'processing', 'Lecture terminée, en attente du retour IA');
+          }
+        } catch (error) {
+          console.error('Reading exam file failed:', error);
+          if (stepId) {
+            updateStepStatus(stepId, 'error', 'Lecture impossible');
+          }
+          setUploadMessage({
+            type: 'error',
+            text: 'Impossible de lire certaines copies. Vérifiez vos fichiers et réessayez.'
+          });
+          setUploadingExam(false);
+          return;
+        }
+      }
+
+      if (analysisStepId) {
+        updateStepStatus(analysisStepId, 'processing', 'Analyse IA en cours…');
+      }
+
       const response = await fetch('/api/exams/upload', {
         method: 'POST',
         headers: {
@@ -260,18 +432,44 @@ export default function ProgramPage() {
       if (data.success) {
         setUploadMessage({ type: 'success', text: data.message || 'Copie analysée avec succès !' });
         setProcessedResults(data.data?.processedStudents || []);
+        fileStepIds.forEach(stepId => {
+          updateStepStatus(stepId, 'success', 'Retour transmis');
+        });
+        if (analysisStepId) {
+          updateStepStatus(analysisStepId, 'success', 'Synthèse mise à jour');
+        }
         setExamFiles([]);
-        setExamPreviewUrls([]);
+        setExamPreviewUrls(prev => {
+          prev.forEach(url => URL.revokeObjectURL(url));
+          return [];
+        });
       } else {
+        fileStepIds.forEach(stepId => {
+          updateStepStatus(stepId, 'error', data.message || 'Analyse impossible');
+        });
+        if (analysisStepId) {
+          updateStepStatus(analysisStepId, 'error', data.message || 'Analyse impossible');
+        }
         setUploadMessage({ type: 'error', text: data.message || 'Échec de l’analyse de la copie.' });
       }
     } catch (error) {
       console.error('Upload exam photo failed:', error);
+      fileStepIds.forEach(stepId => {
+        updateStepStatus(stepId, 'error', 'Erreur réseau');
+      });
+      if (analysisStepId) {
+        updateStepStatus(analysisStepId, 'error', 'Erreur réseau');
+      }
       setUploadMessage({ type: 'error', text: 'Erreur inattendue lors du téléversement.' });
     } finally {
       setUploadingExam(false);
     }
   };
+
+  const completedUploadSteps = uploadSteps.filter(
+    step => step.status === 'success' || step.status === 'error'
+  ).length;
+  const totalUploadSteps = uploadSteps.length;
 
   if (loading) {
     return (
@@ -397,10 +595,7 @@ export default function ProgramPage() {
                   {deletingLessonId === selectedLesson.id ? 'Suppression…' : 'Supprimer la leçon'}
                 </button>
                 <button
-                  onClick={() => {
-                    setSelectedLesson(null);
-                    setLessonDeleteError(null);
-                  }}
+                  onClick={handleCloseLessonModal}
                   className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
                   aria-label="Fermer"
                 >
@@ -491,6 +686,61 @@ export default function ProgramPage() {
                       </p>
                     </div>
                   </div>
+
+                  {uploadSteps.length > 0 && (
+                    <div className="rounded-xl border border-blue-100 bg-white/80 p-4 shadow-sm space-y-4">
+                      <div className="flex flex-wrap items-center gap-4">
+                        <UploadProgressRing
+                          completed={completedUploadSteps}
+                          total={totalUploadSteps}
+                        />
+                        <div className="flex-1 min-w-[10rem]">
+                          <p className="text-sm font-semibold text-gray-800">Suivi des copies</p>
+                          <p className="text-xs text-gray-500">
+                            {completedUploadSteps}/{totalUploadSteps} étapes traitées
+                          </p>
+                          {uploadingExam && (
+                            <p className="text-xs text-blue-600 font-medium mt-1">Analyse en cours…</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto pr-1 space-y-2">
+                        {uploadSteps.map(step => {
+                          const statusToken = uploadStatusTokens[step.status];
+                          return (
+                            <div
+                              key={step.id}
+                              className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span
+                                  className={`h-2.5 w-2.5 rounded-full ${statusToken.dotClass}`}
+                                  aria-hidden="true"
+                                />
+                                <span className="font-medium text-gray-700 truncate" title={step.label}>
+                                  {step.label}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-right">
+                                <span className={`text-xs font-semibold ${statusToken.textColor}`}>
+                                  {statusToken.label}
+                                </span>
+                                {step.detail && (
+                                  <span
+                                    className={`text-xs ${
+                                      step.status === 'error' ? 'text-red-500' : 'text-gray-500'
+                                    }`}
+                                  >
+                                    {step.detail}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {uploadMessage && (
                     <div

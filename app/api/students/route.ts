@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getTeacherFromRequest } from '@/lib/auth';
+import { DEFAULT_PERFORMANCE_LEVEL, normalizePerformanceLevel } from '@/lib/student-level';
 
 // POST /api/students - Create new student
 export async function POST(request: NextRequest) {
@@ -14,7 +15,17 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { classId, name, age, avatarUrl } = body;
+    const { classId, name, age, avatarUrl, performanceLevel } = body;
+
+    let normalizedPerformanceLevel: number | undefined;
+    try {
+      normalizedPerformanceLevel = normalizePerformanceLevel(performanceLevel);
+    } catch {
+      return new Response(JSON.stringify({
+        success: false,
+        message: 'Le niveau doit être un entier entre 1 et 5.'
+      }), { status: 400 });
+    }
 
     if (!classId || !name || name.trim().length === 0) {
       return new Response(JSON.stringify({
@@ -43,7 +54,8 @@ export async function POST(request: NextRequest) {
         classId,
         name: name.trim(),
         age: age || null,
-        avatarUrl: avatarUrl || null
+        avatarUrl: avatarUrl || null,
+        performanceLevel: normalizedPerformanceLevel ?? DEFAULT_PERFORMANCE_LEVEL
       }
     });
 

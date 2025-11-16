@@ -28,6 +28,7 @@ Ce document donne une vue d’ensemble du produit, de ses objectifs pédagogique
   - `/api/summaries/generate` : fallback pour recalculer un résumé depuis enseignement/assessments.  
 - **Auth** : JWT (`lib/auth.ts`), routines pour login/signup, middleware dans les routes.  
 - **Base de données** : PostgreSQL (Supabase). Prisma gère les tables `Teacher`, `Program`, `Lesson`, `Class`, `Student`, `StudentLessonStatus`, `StudentSummary`, `Assessment`, `StudentAssessment`.  
+- **Niveaux élèves** : `Student.performanceLevel` (1→5) est recalculé après chaque upload en fonction de la moyenne (sur 5 dernières copies) du ratio `overallScore / maxScore`. L’enseignant peut toujours ajuster manuellement la couleur depuis `/classes/[classId]`.
 - **Logging** : `lib/prisma.ts` configure les niveaux (silence par défaut, option `PRISMA_DEBUG=true` pour débogage).
 
 ### Intelligence artificielle

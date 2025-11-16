@@ -123,7 +123,8 @@ export async function PUT(
             id: true,
             name: true,
             age: true,
-            avatarUrl: true
+            avatarUrl: true,
+            performanceLevel: true
           }
         }
       }

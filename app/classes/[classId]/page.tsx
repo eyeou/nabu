@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Class, Student } from '@/types';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import Link from 'next/link';
 import StudentRegistryUpload, { ExtractedStudent } from '@/components/StudentRegistryUpload';
-import { parseCopyInsights } from '@/lib/copy-insights';
+import { DEFAULT_PERFORMANCE_LEVEL, STUDENT_PERFORMANCE_LEVELS } from '@/lib/student-level';
+
+type StudentSortMode = 'alphabetical' | 'level';
+
+const levelFallback =
+  STUDENT_PERFORMANCE_LEVELS.find((level) => level.value === DEFAULT_PERFORMANCE_LEVEL) ||
+  STUDENT_PERFORMANCE_LEVELS[0];
+
+const getLevelInfo = (level?: number | null) =>
+  STUDENT_PERFORMANCE_LEVELS.find((definition) => definition.value === level) || levelFallback;
 
 export default function ClassPage() {
   const params = useParams();
@@ -16,16 +22,14 @@ export default function ClassPage() {
 
   const [classData, setClassData] = useState<Class | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [selectedStudentDetails, setSelectedStudentDetails] = useState<Student | null>(null);
   const [loading, setLoading] = useState(true);
-  const [studentDetailLoading, setStudentDetailLoading] = useState(false);
-  const [studentDeleteLoading, setStudentDeleteLoading] = useState(false);
-  const [studentDeleteError, setStudentDeleteError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [classDeleteLoading, setClassDeleteLoading] = useState(false);
   const [classDeleteError, setClassDeleteError] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<StudentSortMode>('alphabetical');
+  const [levelUpdatingId, setLevelUpdatingId] = useState<string | null>(null);
+  const [levelUpdateError, setLevelUpdateError] = useState<string | null>(null);
 
   const fetchClass = useCallback(async () => {
     try {
@@ -48,23 +52,6 @@ export default function ClassPage() {
   useEffect(() => {
     fetchClass();
   }, [fetchClass]);
-
-  const fetchStudentDetails = useCallback(async (studentId: string) => {
-    setStudentDetailLoading(true);
-    try {
-      const response = await fetch(`/api/students/${studentId}`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-      if (data.success) {
-        setSelectedStudentDetails(data.data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch student details:', error);
-    } finally {
-      setStudentDetailLoading(false);
-    }
-  }, []);
 
   const handleAddStudent = async () => {
     const studentName = prompt("Nom de l'élève :");
@@ -122,8 +109,7 @@ export default function ClassPage() {
   };
 
   const handleStudentClick = (student: Student) => {
-    setSelectedStudent(student);
-    fetchStudentDetails(student.id);
+    router.push(`/students/${student.id}`);
   };
 
   const handleDeleteStudentFromList = async (studentId: string, studentName: string) => {
@@ -140,46 +126,12 @@ export default function ClassPage() {
       const data = await response.json();
       if (data.success) {
         setStudents(prev => prev.filter(s => s.id !== studentId));
-        if (selectedStudent?.id === studentId) {
-          setSelectedStudent(null);
-          setSelectedStudentDetails(null);
-        }
       } else {
         alert(data.message || 'Impossible de supprimer cet élève.');
       }
     } catch (error) {
       console.error('Failed to delete student:', error);
       alert('Une erreur est survenue pendant la suppression.');
-    }
-  };
-
-  const handleDeleteSelectedStudent = async () => {
-    if (!selectedStudent) return;
-    const confirmed = window.confirm(
-      `Supprimer définitivement ${selectedStudent.name} ? Toutes ses données seront effacées.`
-    );
-    if (!confirmed) return;
-
-    setStudentDeleteLoading(true);
-    setStudentDeleteError(null);
-    try {
-      const response = await fetch(`/api/students/${selectedStudent.id}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      const data = await response.json();
-      if (data.success) {
-        setStudents(prev => prev.filter(s => s.id !== selectedStudent.id));
-        setSelectedStudent(null);
-        setSelectedStudentDetails(null);
-      } else {
-        setStudentDeleteError(data.message || 'Impossible de supprimer cet élève.');
-      }
-    } catch (error) {
-      console.error('Failed to delete student:', error);
-      setStudentDeleteError('Une erreur est survenue pendant la suppression.');
-    } finally {
-      setStudentDeleteLoading(false);
     }
   };
 
@@ -216,6 +168,68 @@ export default function ClassPage() {
       setIsImporting(false);
     }
   };
+
+  const handleStudentLevelChange = async (student: Student, newLevel: number) => {
+    if (!student) return;
+    const currentLevel = student.performanceLevel ?? DEFAULT_PERFORMANCE_LEVEL;
+    if (newLevel === currentLevel) {
+      return;
+    }
+
+    setLevelUpdatingId(student.id);
+    setLevelUpdateError(null);
+
+    try {
+      const response = await fetch(`/api/students/${student.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ performanceLevel: newLevel })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setStudents((prev) =>
+          prev.map((current) =>
+            current.id === student.id ? { ...current, performanceLevel: newLevel } : current
+          )
+        );
+      } else {
+        setLevelUpdateError(data.message || 'Impossible de mettre à jour le niveau.');
+      }
+    } catch (error) {
+      console.error('Failed to update student level:', error);
+      setLevelUpdateError('Impossible de mettre à jour le niveau.');
+    } finally {
+      setLevelUpdatingId(null);
+    }
+  };
+
+  const alphabeticalStudents = useMemo(
+    () =>
+      [...students].sort((a, b) =>
+        a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })
+      ),
+    [students]
+  );
+
+  const studentsByLevel = useMemo(() => {
+    const grouped: Record<number, Student[]> = {};
+    STUDENT_PERFORMANCE_LEVELS.forEach((level) => {
+      grouped[level.value] = [];
+    });
+
+    students.forEach((student) => {
+      const levelValue = student.performanceLevel ?? DEFAULT_PERFORMANCE_LEVEL;
+      if (!grouped[levelValue]) {
+        grouped[levelValue] = [];
+      }
+      grouped[levelValue].push(student);
+    });
+
+    return grouped;
+  }, [students]);
 
   if (loading) {
     return (
@@ -278,7 +292,7 @@ export default function ClassPage() {
         </div>
       </div>
 
-      {/* Students as circles */}
+      {/* Students */}
       <div className="container mx-auto px-8 py-12">
         {students.length === 0 ? (
           <div className="text-center py-20">
@@ -291,232 +305,220 @@ export default function ClassPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-8">
-            {students.map(student => (
-              <div key={student.id} className="flex flex-col items-center group relative">
-                <button
-                  onClick={() => handleStudentClick(student)}
-                  className="w-24 h-24 rounded-full bg-green-400 hover:bg-green-500 transition-all duration-300 group-hover:scale-110 shadow-lg flex items-center justify-center text-white font-bold text-lg relative"
-                >
-                  {student.name.charAt(0).toUpperCase()}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteStudentFromList(student.id, student.name);
-                  }}
-                  className="absolute top-0 right-0 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                  title={`Supprimer ${student.name}`}
-                >
-                  ×
-                </button>
-                <div className="mt-3 text-sm text-gray-700 text-center font-medium">
-                  {student.name}
-                </div>
+          <>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
+              <div className="inline-flex overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                {(['alphabetical', 'level'] as StudentSortMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setSortMode(mode)}
+                    className={`px-4 py-2 text-sm font-medium transition ${
+                      sortMode === mode
+                        ? 'bg-gray-900 text-white'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {mode === 'alphabetical' ? 'Ordre alphabétique' : 'Tri par niveau'}
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Student Detail Modal */}
-      {selectedStudent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 sm:p-8 z-50">
-          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto space-y-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-xs uppercase text-gray-400">Élève</p>
-                <h2 className="text-2xl font-bold text-gray-800">{selectedStudent.name}</h2>
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  <Badge variant="secondary">
-                    Âge {selectedStudent.age ?? '—'}
-                  </Badge>
-                  {selectedStudentDetails?.class?.name && (
-                    <Badge variant="outline">{selectedStudentDetails.class.name}</Badge>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedStudent(null);
-                  setSelectedStudentDetails(null);
-                }}
-                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-gray-500">
-                {studentDetailLoading
-                  ? 'Chargement des données pédagogiques…'
-                  : 'Dernières analyses IA pour cet élève.'}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  href={`/students/${selectedStudent.id}`}
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                >
-                  Ouvrir la fiche complète →
-                </Link>
-                <button
-                  onClick={handleDeleteSelectedStudent}
-                  disabled={studentDeleteLoading}
-                  className="text-sm text-red-600 border border-red-200 rounded-md px-3 py-1 hover:bg-red-50 disabled:opacity-50"
-                >
-                  {studentDeleteLoading ? 'Suppression…' : 'Supprimer l’élève'}
-                </button>
+              <div className="flex flex-wrap gap-3 text-sm text-gray-600">
+                {STUDENT_PERFORMANCE_LEVELS.map((level) => (
+                  <div key={level.value} className="flex items-center gap-2">
+                    <span className={`h-3 w-3 rounded-full ${level.accent}`}></span>
+                    <span>{level.label}</span>
+                  </div>
+                ))}
               </div>
             </div>
-            {studentDeleteError && (
-              <p className="text-sm text-red-600">{studentDeleteError}</p>
+            <p className="text-xs text-gray-500">
+              Les niveaux sont recalculés automatiquement à partir de la moyenne des dernières copies importées.
+              Ajustez-les ici si vous souhaitez surclasser ou baisser un élève ponctuellement.
+            </p>
+
+            {levelUpdateError && (
+              <p className="mb-4 text-sm text-red-600">{levelUpdateError}</p>
             )}
 
-            <div className="grid gap-4">
-              <Card>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold text-gray-800">Synthèse IA</p>
-                    {studentDetailLoading && (
-                      <span className="text-xs text-gray-400">Chargement…</span>
-                    )}
-                  </div>
-                  {selectedStudentDetails?.summaries?.length ? (
-                    selectedStudentDetails.summaries.map(summary => (
-                      <div key={summary.id}>
-                        <p className="text-xs uppercase text-gray-400 mb-1">{summary.subject}</p>
-                        <ul className="space-y-1 text-sm text-gray-700">
-                          {JSON.parse(summary.bulletPointsJson || '[]').map(
-                            (point: string, index: number) => (
-                              <li key={index} className="flex gap-2">
-                                <span>•</span>
-                                <span>{point}</span>
-                              </li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-500">
-                      Importez une copie pour générer une synthèse IA.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold text-gray-800">Examens récents</p>
-                    {studentDetailLoading && (
-                      <span className="text-xs text-gray-400">Chargement…</span>
-                    )}
-                  </div>
-                  {selectedStudentDetails?.studentAssessments?.length ? (
-                    selectedStudentDetails.studentAssessments.slice(0, 2).map(assessment => (
-                      <div key={assessment.id} className="border rounded-lg p-3 bg-gray-50 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-gray-800">
-                            {assessment.assessment?.title || 'Évaluation'}
+            {sortMode === 'alphabetical' ? (
+              <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                <table className="min-w-full divide-y divide-gray-100">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Élève
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Niveau
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {alphabeticalStudents.map((student) => {
+                      const levelInfo = getLevelInfo(student.performanceLevel);
+                      return (
+                        <tr key={student.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-4">
+                              <div
+                                className={`flex h-12 w-12 items-center justify-center rounded-full text-white font-semibold ${levelInfo.accent}`}
+                              >
+                                {student.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-900">{student.name}</p>
+                                <p className="text-xs text-gray-500">
+                                  ID {student.id.slice(-6).toUpperCase()}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                              <span
+                                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${levelInfo.badgeBg} ${levelInfo.badgeText}`}
+                              >
+                                {levelInfo.label}
+                              </span>
+                              <select
+                                value={(student.performanceLevel ?? DEFAULT_PERFORMANCE_LEVEL).toString()}
+                                onChange={(event) =>
+                                  handleStudentLevelChange(student, Number(event.target.value))
+                                }
+                                disabled={levelUpdatingId === student.id}
+                                className="rounded-lg border border-gray-200 px-3 py-1 text-sm focus:border-gray-400 focus:outline-none"
+                              >
+                                {STUDENT_PERFORMANCE_LEVELS.map((level) => (
+                                  <option key={level.value} value={level.value}>
+                                    {level.value} — {level.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right text-sm">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <button
+                                onClick={() => handleStudentClick(student)}
+                                className="rounded-lg border border-gray-200 px-3 py-1 text-gray-700 hover:bg-gray-50"
+                              >
+                                Voir la fiche
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleDeleteStudentFromList(student.id, student.name)
+                                }
+                                className="rounded-lg border border-red-200 px-3 py-1 text-red-600 hover:bg-red-50"
+                              >
+                                Supprimer
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {STUDENT_PERFORMANCE_LEVELS.map((levelDefinition) => {
+                  const studentsInLevel = studentsByLevel[levelDefinition.value] || [];
+                  return (
+                    <div
+                      key={levelDefinition.value}
+                      className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
+                    >
+                      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                            Niveau {levelDefinition.value}
                           </p>
-                          <span className="text-xs text-gray-400">
-                            {assessment.createdAt
-                              ? new Date(assessment.createdAt).toLocaleDateString()
-                              : ''}
-                          </span>
+                          <h3 className="text-xl font-bold text-gray-800">{levelDefinition.label}</h3>
+                          <p className="text-sm text-gray-500">{levelDefinition.description}</p>
                         </div>
-                        {(() => {
-                          const insights = parseCopyInsights(assessment.gradedResponses);
-                          const gradeDisplay =
-                            insights.gradeText ||
-                            (typeof assessment.overallScore === 'number' &&
-                            typeof assessment.maxScore === 'number'
-                              ? `${assessment.overallScore}/${assessment.maxScore}`
-                              : 'Non renseignée');
-
-                          return (
-                            <>
-                              <p className="text-sm text-gray-600">Note relevée : {gradeDisplay}</p>
-
-                              {insights.adviceSummary.length > 0 && (
-                                <div>
-                                  <p className="text-xs uppercase text-gray-400">Conseils clés</p>
-                                  <ul className="mt-1 space-y-1 text-sm text-gray-700">
-                                    {insights.adviceSummary.map((advice, index) => (
-                                      <li key={`${assessment.id}-advice-${index}`} className="flex gap-2">
-                                        <span>•</span>
-                                        <span>{advice}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {insights.programRecommendations.length > 0 && (
-                                <div>
-                                  <p className="text-xs uppercase text-gray-400 mb-1">Axes du programme</p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {insights.programRecommendations.map((recommendation, index) => (
-                                      <Badge key={`${assessment.id}-recommendation-${index}`} variant="outline">
-                                        {recommendation}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {insights.questions.length > 0 && (
-                                <details className="text-sm text-gray-600">
-                                  <summary className="cursor-pointer text-blue-600">
-                                    Voir les notes liées à la copie
-                                  </summary>
-                                  <ul className="mt-2 space-y-2 text-gray-600">
-                                    {insights.questions.slice(0, 2).map((question, idx) => (
-                                      <li key={idx} className="border rounded-md p-2 bg-white">
-                                        <p className="font-medium">
-                                          Q{question.number || idx + 1} : {question.questionText}
-                                        </p>
-                                        {question.teacherComment && (
-                                          <p className="text-sm">Note prof : {question.teacherComment}</p>
-                                        )}
-                                        {(question.improvementAdvice || question.feedback) && (
-                                          <p className="text-sm">
-                                            Conseil : {question.improvementAdvice || question.feedback}
-                                          </p>
-                                        )}
-                                        {(question.recommendedProgramFocus ||
-                                          (question.skillTags && question.skillTags.length > 0)) && (
-                                          <p className="text-xs text-gray-500">
-                                            Programme :{' '}
-                                            {[
-                                              question.recommendedProgramFocus,
-                                              ...(question.skillTags || [])
-                                            ]
-                                              .filter(Boolean)
-                                              .join(', ')}
-                                          </p>
-                                        )}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </details>
-                              )}
-                            </>
-                          );
-                        })()}
+                        <span
+                          className={`inline-flex items-center rounded-full px-4 py-1 text-sm font-medium ${levelDefinition.badgeBg} ${levelDefinition.badgeText}`}
+                        >
+                          {studentsInLevel.length} élève
+                          {studentsInLevel.length > 1 ? 's' : ''}
+                        </span>
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-gray-500">Aucun examen importé.</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-      )}
+                      {studentsInLevel.length === 0 ? (
+                        <p className="text-sm text-gray-400">
+                          Aucun élève classé ici pour le moment.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {[...studentsInLevel]
+                            .sort((a, b) =>
+                              a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })
+                            )
+                            .map((student) => (
+                              <div
+                                key={student.id}
+                                className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm transition hover:shadow-md"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className={`flex h-12 w-12 items-center justify-center rounded-full text-white font-semibold ${levelDefinition.accent}`}
+                                    >
+                                      {student.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-gray-900">{student.name}</p>
+                                      <p className="text-xs text-gray-500">
+                                        ID {student.id.slice(-6).toUpperCase()}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <select
+                                    value={(student.performanceLevel ?? DEFAULT_PERFORMANCE_LEVEL).toString()}
+                                    onChange={(event) =>
+                                      handleStudentLevelChange(student, Number(event.target.value))
+                                    }
+                                    disabled={levelUpdatingId === student.id}
+                                    className="rounded-lg border border-gray-200 px-2 py-1 text-xs focus:border-gray-400 focus:outline-none"
+                                  >
+                                    {STUDENT_PERFORMANCE_LEVELS.map((level) => (
+                                      <option key={level.value} value={level.value}>
+                                        {level.value} — {level.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    onClick={() => handleStudentClick(student)}
+                                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                  >
+                                    Voir la fiche
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleDeleteStudentFromList(student.id, student.name)
+                                    }
+                                    className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                                  >
+                                    Supprimer
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Import Students Modal */}
       {showImportModal && (

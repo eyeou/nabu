@@ -42,6 +42,26 @@ interface AssessmentSummaryForPrompt {
   }>;
 }
 
+interface TeacherCommentForPrompt {
+  content: string;
+  teacherName?: string;
+  createdAt: string;
+}
+
+function extractTeacherCommentHighlights(
+  comments?: TeacherCommentForPrompt[]
+): TeacherCommentForPrompt[] {
+  return (
+    comments
+      ?.filter(comment => comment.content?.trim())
+      .map(comment => ({
+        ...comment,
+        content: comment.content.trim()
+      }))
+      .slice(0, 5) ?? []
+  );
+}
+
 export interface StudentForAnalysis
   extends Omit<
     Student,
@@ -52,6 +72,7 @@ export interface StudentForAnalysis
   className?: string;
   lessonStatuses: LessonStatusForPrompt[];
   assessments?: AssessmentSummaryForPrompt[];
+  teacherComments?: TeacherCommentForPrompt[];
 }
 
 export interface ExamQuestionAnalysis {
@@ -115,6 +136,19 @@ function extractMessageText(content?: MessageContent): string {
     .join('\n');
 }
 
+function extractLikelyJson(raw?: string): string {
+  if (!raw) {
+    return '';
+  }
+  const trimmed = raw.trim();
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) {
+    return trimmed;
+  }
+  return trimmed.slice(firstBrace, lastBrace + 1).trim();
+}
+
 async function callBlackboxChat(body: ChatCompletionBody): Promise<ChatCompletionResponse | null> {
   const apiKey = process.env.BLACKBOX_API_KEY;
 
@@ -141,7 +175,11 @@ async function callBlackboxChat(body: ChatCompletionBody): Promise<ChatCompletio
   return response.json();
 }
 
-function buildPromptInput(student: StudentForAnalysis) {
+function buildPromptInput(
+  student: StudentForAnalysis,
+  teacherCommentHighlights: TeacherCommentForPrompt[],
+  assessmentSignals: AssessmentSignals
+) {
   const overallAverageScore =
     student.lessonStatuses.length > 0
       ? Math.round(
@@ -187,14 +225,32 @@ function buildPromptInput(student: StudentForAnalysis) {
       overallAverageScore
     },
     lecons: student.lessonStatuses,
-    recentAssessments
+    recentAssessments,
+    teacherComments: teacherCommentHighlights,
+    examInsights: assessmentSignals
   };
 }
 
 export async function generateStudentAnalysisFromLLM(
   student: StudentForAnalysis
 ): Promise<StudentAnalysisOutput> {
-  const input = buildPromptInput(student);
+  const teacherCommentHighlights = extractTeacherCommentHighlights(student.teacherComments);
+  const assessmentSignals = collectAssessmentSignals(student.assessments ?? []);
+  const input = buildPromptInput(student, teacherCommentHighlights, assessmentSignals);
+  const hasStructuredData =
+    (student.lessonStatuses?.length ?? 0) > 0 ||
+    (student.assessments?.length ?? 0) > 0 ||
+    teacherCommentHighlights.length > 0;
+  const deterministicSummary = buildDeterministicSummary(
+    student,
+    teacherCommentHighlights,
+    assessmentSignals
+  );
+
+  if (!hasStructuredData) {
+    console.warn('Skipping LLM analysis: no pedagogical data provided for student', student.id);
+    return deterministicSummary;
+  }
 
   const body = {
     model: DEFAULT_TEXT_MODEL,
@@ -203,7 +259,11 @@ export async function generateStudentAnalysisFromLLM(
         role: 'system',
         content: [
           'Tu es un coach pédagogique francophone spécialisé dans l’analyse d’évaluations corrigées.',
-          'Tu t’appuies UNIQUEMENT sur les données présentes dans les copies (questions, réponses, annotations du professeur, conseils, axes du programme) et tu ignores tout ce qui n’en provient pas.',
+          'Tu réponds UNIQUEMENT avec un objet JSON strict contenant exactement les clés "strengths", "weaknesses" et "recommendations".',
+          'Tu n’ajoutes jamais de phrases hors du JSON, pas d’excuses, pas de questions.',
+          'Même si les données sont partielles, tu remplis chaque clé avec un tableau (qui peut être vide) et tu ne demandes jamais plus d’informations.',
+          'Tu t’appuies en priorité sur les données présentes dans les copies (questions, réponses, annotations du professeur, conseils, axes du programme) et tu ignores les informations externes qui ne figurent pas dans le dossier.',
+          'Lorsque des commentaires du professeur sont fournis, tu les utilises pour contextualiser les constats, souligner les objectifs déjà partagés et rester cohérent avec ses priorités.',
           'Tu ne recalcules jamais les notes : la note inscrite par l’enseignant est la référence absolue.',
           'Tu renvoies un unique objet JSON avec exactement les clés "strengths", "weaknesses", "recommendations" (même si les clés sont en anglais, tout le contenu est rédigé en français).',
           'Chaque clé contient un tableau de puces en français clair, reliées à des constats précis tirés des copies, en citant les notions ou compétences à retravailler quand c’est pertinent.'
@@ -212,8 +272,8 @@ export async function generateStudentAnalysisFromLLM(
       {
         role: 'user',
         content:
-          'Analyse ces données (leçons + copies corrigées). Déduis uniquement des enseignements issus des copies : cite les compétences maîtrisées, les erreurs récurrentes, et propose des recommandations concrètes pour la prochaine séance. ' +
-          'Réponds en français, format JSON strict.\n\n' +
+          'Analyse ces données (leçons + copies corrigées + commentaires du professeur). Déduis uniquement des enseignements issus des copies tout en intégrant les rappels ou alertes de l’enseignant : cite les compétences maîtrisées, les erreurs récurrentes, et propose des recommandations concrètes pour la prochaine séance.' +
+          'Réponds en français, et renvoie SEULEMENT un objet JSON valide. Ne pose jamais de question, même si les données sont limitées.\n\n' +
           JSON.stringify(input)
       }
     ]
@@ -222,13 +282,14 @@ export async function generateStudentAnalysisFromLLM(
   try {
     const data = await callBlackboxChat(body);
     const content = extractMessageText(data?.choices?.[0]?.message?.content);
+    const jsonCandidate = extractLikelyJson(content);
 
     let parsed: Partial<StudentAnalysisOutput>;
     try {
-      parsed = JSON.parse(content || '{}') as Partial<StudentAnalysisOutput>;
+      parsed = JSON.parse(jsonCandidate || '{}') as Partial<StudentAnalysisOutput>;
     } catch (parseError) {
       console.error('Failed to parse LLM JSON content, falling back:', parseError, content);
-      return fallbackAnalysis(student);
+      return deterministicSummary;
     }
 
     if (
@@ -238,14 +299,16 @@ export async function generateStudentAnalysisFromLLM(
       !Array.isArray(parsed.recommendations)
     ) {
       console.warn('LLM response missing expected keys. Falling back to default analysis.');
-      return fallbackAnalysis(student);
+      return deterministicSummary;
     }
 
-    return {
-      strengths: parsed.strengths,
-      weaknesses: parsed.weaknesses,
-      recommendations: parsed.recommendations
+    const normalized: StudentAnalysisOutput = {
+      strengths: normalizeList(parsed.strengths),
+      weaknesses: normalizeList(parsed.weaknesses),
+      recommendations: normalizeList(parsed.recommendations)
     };
+
+    return mergeSummaries(normalized, deterministicSummary);
   } catch (error) {
     if (error instanceof Error && error.message === 'BLACKBOX_API_KEY_NOT_SET') {
       console.warn('BLACKBOX_API_KEY is not set. Falling back to default summaries.');
@@ -255,11 +318,15 @@ export async function generateStudentAnalysisFromLLM(
     }
 
     console.error('Error calling Blackbox AI:', error);
-    return fallbackAnalysis(student);
+    return deterministicSummary;
   }
 }
 
-function fallbackAnalysis(student: StudentForAnalysis): StudentAnalysisOutput {
+function buildDeterministicSummary(
+  student: StudentForAnalysis,
+  teacherCommentHighlights: TeacherCommentForPrompt[],
+  assessmentSignals: AssessmentSignals
+): StudentAnalysisOutput {
   const completed = student.lessonStatuses.filter(ls =>
     ['completed', 'mastered'].includes(ls.masteryLevel)
   );
@@ -301,7 +368,183 @@ function fallbackAnalysis(student: StudentForAnalysis): StudentAnalysisOutput {
     );
   }
 
-  return { strengths, weaknesses, recommendations };
+  if (teacherCommentHighlights.length > 0) {
+    const [latestComment] = teacherCommentHighlights;
+    const excerpt = summarizeTeacherComment(latestComment.content);
+    if (excerpt) {
+      recommendations.unshift(
+        `Prendre en compte la priorité signalée par ${latestComment.teacherName ?? 'l’enseignant·e'} : ${excerpt}`
+      );
+    }
+    weaknesses.push(
+      teacherCommentHighlights.length > 1
+        ? 'Plusieurs commentaires récents soulignent des points d’attention récurrents : les intégrer explicitement au prochain plan de travail.'
+        : 'Le dernier commentaire du professeur met en avant un point de vigilance à suivre de près.'
+    );
+  }
+
+  if (assessmentSignals.strongPerformances.length > 0) {
+    strengths.push(...assessmentSignals.strongPerformances.slice(0, 2));
+  }
+
+  if (assessmentSignals.adviceBullets.length > 0) {
+    weaknesses.push(...assessmentSignals.adviceBullets.slice(0, 2));
+  }
+
+  if (assessmentSignals.questionIssues.length > 0) {
+    weaknesses.push(...assessmentSignals.questionIssues.slice(0, 2));
+  }
+
+  if (assessmentSignals.strugglingPerformances.length > 0) {
+    weaknesses.push(...assessmentSignals.strugglingPerformances.slice(0, 2));
+  }
+
+  if (assessmentSignals.programRecommendations.length > 0) {
+    recommendations.push(
+      ...assessmentSignals.programRecommendations.slice(0, 3).map(rec => `Planifier : ${rec}`)
+    );
+  }
+
+  if (assessmentSignals.adviceBullets.length > 0) {
+    recommendations.push(
+      ...assessmentSignals.adviceBullets.slice(0, 3).map(advice => `Mettre en pratique : ${advice}`)
+    );
+  }
+
+  if (weaknesses.length === 0) {
+    weaknesses.push(
+      'Les données disponibles ne mettent pas encore en évidence de blocage précis : planifier une nouvelle évaluation ciblée pour confirmer les acquis et révéler les axes à renforcer.'
+    );
+  }
+
+  return {
+    strengths: uniqueInOrder(strengths),
+    weaknesses: uniqueInOrder(weaknesses),
+    recommendations: uniqueInOrder(recommendations)
+  };
+}
+
+function summarizeTeacherComment(content: string, maxLength = 160): string {
+  const singleLine = content.replace(/\s+/g, ' ').trim();
+  if (!singleLine) {
+    return '';
+  }
+  if (singleLine.length <= maxLength) {
+    return singleLine;
+  }
+  return `${singleLine.slice(0, maxLength - 1).trim()}…`;
+}
+
+function normalizeList(values?: string[]): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return values
+    .map(value => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+}
+
+function mergeSummaries(
+  primary: StudentAnalysisOutput,
+  baseline: StudentAnalysisOutput
+): StudentAnalysisOutput {
+  return {
+    strengths: uniqueInOrder([...primary.strengths, ...baseline.strengths]),
+    weaknesses: uniqueInOrder([...primary.weaknesses, ...baseline.weaknesses]),
+    recommendations: uniqueInOrder([...primary.recommendations, ...baseline.recommendations])
+  };
+}
+
+interface AssessmentSignals {
+  strongPerformances: string[];
+  strugglingPerformances: string[];
+  adviceBullets: string[];
+  questionIssues: string[];
+  programRecommendations: string[];
+}
+
+function collectAssessmentSignals(
+  assessments: AssessmentSummaryForPrompt[]
+): AssessmentSignals {
+  const strongPerformances: string[] = [];
+  const strugglingPerformances: string[] = [];
+  const adviceBullets: string[] = [];
+  const questionIssues: string[] = [];
+  const programRecommendations: string[] = [];
+
+  assessments.forEach(assessment => {
+    const title = assessment.examTitle || assessment.lessonTitle || 'Évaluation';
+    const percent = computePercent(assessment.overallScore, assessment.maxScore);
+
+    if (typeof percent === 'number') {
+      if (percent >= 0.8) {
+        strongPerformances.push(
+          `${Math.round(percent * 100)} % à « ${title} » : les compétences abordées sont bien assimilées.`
+        );
+      } else if (percent <= 0.55) {
+        strugglingPerformances.push(
+          `${Math.round(percent * 100)} % à « ${title} » : reprendre les notions travaillées dans cette copie.`
+        );
+      }
+    }
+
+    (assessment.adviceSummary ?? []).forEach(advice => {
+      const normalized = normalizeBullet(`${title} – ${advice}`);
+      if (normalized) {
+        adviceBullets.push(normalized);
+      }
+    });
+
+    (assessment.programRecommendations ?? []).forEach(rec => {
+      const normalized = normalizeBullet(rec);
+      if (normalized) {
+        programRecommendations.push(normalized);
+      }
+    });
+
+    (assessment.questions ?? []).forEach(question => {
+      const issue =
+        question.improvementAdvice || question.teacherComment || question.feedback || '';
+      const normalized = normalizeBullet(issue);
+      if (normalized) {
+        const questionLabel = question.number ? `Q${question.number}` : 'Question';
+        questionIssues.push(`${title} – ${questionLabel} : ${normalized}`);
+      }
+    });
+  });
+
+  return {
+    strongPerformances: uniqueInOrder(strongPerformances),
+    strugglingPerformances: uniqueInOrder(strugglingPerformances),
+    adviceBullets: uniqueInOrder(adviceBullets),
+    questionIssues: uniqueInOrder(questionIssues),
+    programRecommendations: uniqueInOrder(programRecommendations)
+  };
+}
+
+function computePercent(score?: number, max?: number): number | null {
+  if (typeof score !== 'number' || typeof max !== 'number' || max <= 0) {
+    return null;
+  }
+  return score / max;
+}
+
+function normalizeBullet(text?: string): string {
+  if (!text) return '';
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function uniqueInOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  values.forEach(value => {
+    const lowered = value.toLowerCase();
+    if (value && !seen.has(lowered)) {
+      seen.add(lowered);
+      result.push(value);
+    }
+  });
+  return result;
 }
 
 export async function analyzeAndGradeExamImage(params: {

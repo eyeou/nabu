@@ -9,6 +9,7 @@ import {
   ExamAnalysisResult
 } from '@/lib/ai';
 import { parseCopyInsights } from '@/lib/copy-insights';
+import { recalculateStudentPerformanceLevel } from '@/lib/student-performance';
 
 export async function POST(request: NextRequest) {
   try {
@@ -258,6 +259,9 @@ export async function POST(request: NextRequest) {
         extractedScore
       });
 
+      console.info('🎯 Recalculating performance level from recent assessments...');
+      await recalculateStudentPerformanceLevel(student.id);
+
       console.info('🧾 Regenerating AI summary for student...');
       const summaries = await regenerateStudentSummaries(student.id);
 
@@ -481,6 +485,17 @@ async function regenerateStudentSummaries(studentId: string) {
       class: {
         select: { name: true, teacherId: true }
       },
+      comments: {
+        include: {
+          teacher: {
+            select: { name: true }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 5
+      },
       lessonStatuses: {
         include: {
           lesson: {
@@ -552,7 +567,13 @@ async function regenerateStudentSummaries(studentId: string) {
             skillTags: question.skillTags
           }))
         };
-      }) ?? []
+      }) ?? [],
+    teacherComments:
+      student.comments?.map(comment => ({
+        content: comment.content,
+        teacherName: comment.teacher?.name ?? undefined,
+        createdAt: comment.createdAt.toISOString()
+      })) ?? []
   };
 
   const analysis = await generateStudentAnalysisFromLLM(studentForAnalysis);

@@ -60,11 +60,11 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-lg">EL</span>
+            <span className="text-white font-bold text-lg">NB</span>
           </div>
           <CardTitle className="text-2xl font-bold">Ravi de vous revoir</CardTitle>
           <p className="text-gray-600 text-sm">
-            Connectez-vous à votre compte enseignant EduLearn
+            Connectez-vous à votre compte enseignant Nabu
           </p>
         </CardHeader>
 
